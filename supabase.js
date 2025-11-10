@@ -2,6 +2,8 @@
 // Gère la connexion Supabase + helpers simples.
 // À inclure AVANT main.js dans chaque page qui en a besoin.
 
+const STRAVA_CLIENT_ID = '178503';
+const STRAVA_CLIENT_SECRET = 'd303be516b179e3f5cb9ed1b32bf7c6e44da1fcf';
 const SUPABASE_URL = 'https://ztylpjgvxibfgtpkdjpo.supabase.co';
 const SUPABASE_ANON_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Inp0eWxwamd2eGliZmd0cGtkanBvIiwicm9sZSI6InNlcnZpY2Vfcm9sZSIsImlhdCI6MTc2MjcwMDQ2MSwiZXhwIjoyMDc4Mjc2NDYxfQ.oP3lJi7QPTV8Xq_WiSpx81hVs02C_Uxigu9GpU2OGzQ'; // met ça dans un .env en prod si possible
 
