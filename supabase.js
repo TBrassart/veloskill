@@ -116,6 +116,20 @@ async function fetchAllSkills() {
   return data || [];
 }
 
+async function fetchSkillById(skillId) {
+  const { data, error } = await supabaseClient
+    .from('skills')
+    .select('*')
+    .eq('id', skillId)
+    .single();
+
+  if (error) {
+    console.error('fetchSkillById error', error);
+    return null;
+  }
+  return data;
+}
+
 // Unlocks utilisateur
 async function fetchUserUnlocks(userId) {
   if (!userId) return [];

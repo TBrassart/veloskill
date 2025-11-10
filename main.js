@@ -233,10 +233,92 @@ const Veloskill = (() => {
         <div class="type">${skill.type}</div>
       `;
       if (isUnlocked || isAvailable) {
-        node.addEventListener('click', () => showSkillPopup(skill, stateClass));
+        node.addEventListener('click', () => {
+          window.location.href = `skill.html?id=${skill.id}`;
+        });
       }
       container.appendChild(node);
     });
+  }
+
+  async function initSkill() {
+    const params = new URLSearchParams(window.location.search);
+    const skillId = params.get('id');
+    if (!skillId) {
+      Veloskill.showToast({
+        type: 'error',
+        title: 'Compétence inconnue',
+        message: 'Identifiant manquant dans l’URL.'
+      });
+      return;
+    }
+
+    const sessionData = await loadSessionAndProfile();
+    const user = sessionData?.user;
+    if (!user) {
+      window.location.href = 'index.html';
+      return;
+    }
+
+    const [skill, unlocks] = await Promise.all([
+      fetchSkillById(skillId),
+      fetchUserUnlocks(user.id)
+    ]);
+
+    if (!skill) {
+      Veloskill.showToast({
+        type: 'error',
+        title: 'Erreur',
+        message: 'Impossible de charger cette compétence.'
+      });
+      return;
+    }
+
+    const isUnlocked = unlocks.includes(skill.id);
+    const isAvailable = !isUnlocked && checkSkillAvailable(skill, unlocks);
+    const state = isUnlocked
+      ? 'unlocked'
+      : isAvailable
+      ? 'available'
+      : 'locked';
+
+    renderSkillDetail(skill, state);
+  }
+
+  function renderSkillDetail(skill, state) {
+    const container = document.querySelector('[data-skill-container]');
+    if (!container) return;
+
+    const conditionText = skill.conditions
+      ? JSON.stringify(skill.conditions, null, 2)
+      : 'Aucune condition définie.';
+    const rewardText = skill.reward
+      ? JSON.stringify(skill.reward, null, 2)
+      : 'Aucune récompense.';
+
+    container.innerHTML = `
+      <h2>${skill.name}</h2>
+      <div class="skill-type">${skill.type}</div>
+      <p class="skill-desc">${skill.description || ''}</p>
+
+      <div class="skill-section">
+        <h3>Conditions</h3>
+        <pre>${conditionText}</pre>
+      </div>
+
+      <div class="skill-section">
+        <h3>Récompense</h3>
+        <pre>${rewardText}</pre>
+      </div>
+
+      <div class="skill-state ${state}">
+        ${state === 'unlocked'
+          ? 'Débloquée 🌟'
+          : state === 'available'
+          ? 'Atteignable 🌱'
+          : 'Verrouillée 🔒'}
+      </div>
+    `;
   }
 
   // Simple vérification : une compétence est "available" si son parent est débloqué
@@ -362,6 +444,9 @@ const Veloskill = (() => {
         break;
       case 'arbre':
         await initArbre();
+        break;
+      case 'skill':
+        await initSkill();
         break;
       case 'boss':
         // initBoss(); // déjà implémenté dans ton module Boss
