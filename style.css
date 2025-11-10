@@ -596,3 +596,30 @@ body.light-theme input {
 .badge-type-boss {
   border-top: 3px solid #ffd966;
 }
+
+.main-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 1rem 2rem;
+  background: #101010;
+  box-shadow: 0 2px 6px rgba(0,0,0,0.4);
+  position: sticky;
+  top: 0;
+  z-index: 50;
+}
+.nav-links {
+  display: flex;
+  gap: 1.5rem;
+}
+.nav-links a {
+  color: #ddd;
+  text-decoration: none;
+  font-weight: 500;
+}
+.nav-links a:hover {
+  color: #42c779;
+}
+.nav-right {
+  position: relative;
+}

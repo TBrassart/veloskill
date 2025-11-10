@@ -10,17 +10,25 @@
   <script src="main.js" defer></script>
 </head>
 <body data-page="activities">
-  <header class="app-header">
-    <button class="btn ghost" onclick="window.location.href='dashboard.html'">← Retour</button>
-    <h1>Mes activités Strava</h1>
-    <div class="spacer"></div>
-    <div class="avatar-wrapper" data-avatar-dropdown-trigger>
-      <div class="avatar" data-user-avatar>V</div>
+  <header class="main-header">
+    <div class="nav-left">
+      <div class="logo" onclick="window.location.href='dashboard.html'">🚴 Veloskill</div>
     </div>
-    <div class="avatar-dropdown" data-avatar-dropdown>
-      <div class="avatar-name" data-user-label></div>
-      <hr />
-      <button data-logout>Déconnexion</button>
+    <nav class="nav-links">
+      <a href="dashboard.html">Dashboard</a>
+      <a href="arbre.html">Compétences</a>
+      <a href="activities.html">Sorties</a>
+      <a href="badges.html">Badges</a>
+    </nav>
+    <div class="nav-right">
+      <div class="avatar-wrapper" data-avatar-dropdown-trigger>
+        <div class="avatar" data-user-avatar>V</div>
+      </div>
+      <div class="avatar-dropdown" data-avatar-dropdown>
+        <div class="avatar-name" data-user-label></div>
+        <a href="profile.html">Profil</a>
+        <button data-logout>Déconnexion</button>
+      </div>
     </div>
   </header>
 

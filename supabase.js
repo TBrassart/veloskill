@@ -218,3 +218,79 @@ async function fetchUserBadges(userId) {
 
   return [...skillBadges, ...bossBadges];
 }
+
+async function exchangeStravaCodeForTokens(userId, code) {
+  const clientId = '<TON_CLIENT_ID>';
+  const clientSecret = '<TON_CLIENT_SECRET>';
+  const response = await fetch('https://www.strava.com/oauth/token', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({
+      client_id: clientId,
+      client_secret: clientSecret,
+      code,
+      grant_type: 'authorization_code'
+    })
+  });
+  const data = await response.json();
+  if (!data.access_token) throw new Error('Échec du token Strava.');
+
+  await supabaseClient.from('strava_tokens').upsert({
+    user_id: userId,
+    strava_athlete_id: data.athlete.id,
+    access_token: data.access_token,
+    refresh_token: data.refresh_token,
+    expires_at: new Date(data.expires_at * 1000).toISOString(),
+    initial_sync_done: false
+  });
+}
+
+async function syncStravaActivities(userId) {
+  const { data: tokenData } = await supabaseClient
+    .from('strava_tokens')
+    .select('*')
+    .eq('user_id', userId)
+    .single();
+
+  if (!tokenData) throw new Error('Aucun token Strava trouvé.');
+
+  const { access_token } = tokenData;
+  const res = await fetch('https://www.strava.com/api/v3/athlete/activities?per_page=50', {
+    headers: { Authorization: `Bearer ${access_token}` }
+  });
+  const activities = await res.json();
+
+  for (const act of activities) {
+    await supabaseClient.from('activities').upsert({
+      id: act.id,
+      user_id: userId,
+      date: act.start_date,
+      distance: act.distance, // en mètres
+      elevation: act.total_elevation_gain,
+      avg_power: act.average_watts,
+      max_power: act.max_watts,
+      duration: act.moving_time,
+      location: act.name,
+      type: act.type
+    });
+  }
+
+  await supabaseClient.from('strava_tokens').update({ initial_sync_done: true }).eq('user_id', userId);
+}
+
+syncBtn.addEventListener('click', async () => {
+  try {
+    await syncStravaActivities(user.id);
+    Veloskill.showToast({
+      type: 'success',
+      title: 'Synchronisation terminée',
+      message: 'Tes dernières activités Strava ont été importées 🚴‍♂️'
+    });
+  } catch (e) {
+    Veloskill.showToast({
+      type: 'error',
+      title: 'Erreur Strava',
+      message: 'Impossible de synchroniser tes activités.'
+    });
+  }
+});

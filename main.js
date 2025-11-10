@@ -401,6 +401,26 @@ const Veloskill = (() => {
     const sessionData = await loadSessionAndProfile();
     const user = sessionData?.user;
     const profile = sessionData?.profile;
+    // Si retour Strava avec code=...
+    const params = new URLSearchParams(window.location.search);
+    const stravaCode = params.get('code');
+    if (stravaCode) {
+      try {
+        await exchangeStravaCodeForTokens(user.id, stravaCode);
+        Veloskill.showToast({
+          type: 'success',
+          title: 'Strava connecté',
+          message: 'Tes sorties vont être synchronisées automatiquement.'
+        });
+        window.history.replaceState({}, document.title, window.location.pathname);
+      } catch (err) {
+        Veloskill.showToast({
+          type: 'error',
+          title: 'Erreur Strava',
+          message: 'Impossible de finaliser la connexion.'
+        });
+      }
+    }
 
     if (!user) {
       window.location.href = 'index.html';
@@ -485,6 +505,26 @@ const Veloskill = (() => {
     // Thème initial
     const savedTheme = localStorage.getItem('veloskill-theme');
     if (savedTheme === 'light') document.body.classList.add('light-theme');
+
+    const stravaBtn = document.querySelector('[data-connect-strava]');
+    const stravaStatus = document.querySelector('[data-strava-status]');
+
+    // Vérifier si déjà connecté (ex: refresh_token existant)
+    const tokens = await supabaseClient.from('strava_tokens').select('*').eq('user_id', user.id).maybeSingle();
+    if (tokens?.data) {
+      stravaStatus.textContent = '✅ Connecté à Strava';
+      stravaBtn.textContent = 'Reconnecter Strava';
+    }
+
+    // Lancer OAuth Strava
+    stravaBtn.addEventListener('click', () => {
+      const clientId = '<TON_CLIENT_ID>'; // à remplacer
+      const redirectUri = encodeURIComponent('https://veloskill.netlify.app/profile.html');
+      const scope = encodeURIComponent('read,activity:read_all');
+      const url = `https://www.strava.com/oauth/authorize?client_id=${clientId}&response_type=code&redirect_uri=${redirectUri}&approval_prompt=auto&scope=${scope}`;
+      window.location.href = url;
+    });
+
   }
 
   async function initActivities() {
@@ -535,7 +575,7 @@ const Veloskill = (() => {
       card.className = 'activity-card';
       const date = new Date(act.date);
       const formattedDate = date.toLocaleDateString('fr-FR', { day: '2-digit', month: 'short', year: 'numeric' });
-      const distance = act.distance ? (act.distance / 1000).toFixed(1) : 0;
+      const distance = act.distance ? act.distance.toFixed(1) : 0;
       const elev = act.elevation || 0;
       const power = act.avg_power ? Math.round(act.avg_power) : '—';
       const durationH = Math.floor((act.duration || 0) / 3600);
