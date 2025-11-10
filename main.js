@@ -254,7 +254,6 @@ const Veloskill = (() => {
     const conditionText = skill.conditions
       ? JSON.stringify(skill.conditions, null, 2)
       : 'Aucune condition';
-
     const rewardText = skill.reward
       ? JSON.stringify(skill.reward, null, 2)
       : 'Aucune récompense définie';
@@ -272,10 +271,10 @@ const Veloskill = (() => {
       </div>
     `;
 
-    popup.hidden = false;
-    closeBtn.onclick = () => (popup.hidden = true);
+    popup.classList.add('show'); // 👈 au lieu de hidden = false
+    closeBtn.onclick = () => popup.classList.remove('show');
     popup.addEventListener('click', (e) => {
-      if (e.target === popup) popup.hidden = true;
+      if (e.target === popup) popup.classList.remove('show');
     });
   }
 
