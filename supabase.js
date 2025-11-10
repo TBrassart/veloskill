@@ -19,7 +19,7 @@ async function signInWithGoogle() {
   const { data, error } = await supabaseClient.auth.signInWithOAuth({
     provider: 'google',
     options: {
-      redirectTo: window.location.origin + '/veloskill/dashboard.html'
+      redirectTo: window.location.origin + '/dashboard.html'
     }
   });
   if (error) throw error;
@@ -101,3 +101,4 @@ async function fetchUserBossAttempts(userId) {
   }
   return data || [];
 }
+
