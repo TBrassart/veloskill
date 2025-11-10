@@ -193,6 +193,92 @@ const Veloskill = (() => {
     }
   }
 
+  async function initArbre() {
+    const sessionData = await loadSessionAndProfile();
+    const user = sessionData?.user;
+
+    if (!user) {
+      window.location.href = 'index.html';
+      return;
+    }
+
+    const [skills, unlocks] = await Promise.all([
+      fetchAllSkills(),
+      fetchUserUnlocks(user.id)
+    ]);
+
+    renderArbre(skills, unlocks);
+  }
+
+  function renderArbre(skills, unlockedIds) {
+    const container = document.querySelector('[data-arbre-container]');
+    if (!container) return;
+    container.innerHTML = '';
+
+    skills.forEach(skill => {
+      const isUnlocked = unlockedIds.includes(skill.id);
+      const isAvailable = !isUnlocked && checkSkillAvailable(skill, unlockedIds);
+      const stateClass = isUnlocked
+        ? 'unlocked'
+        : isAvailable
+        ? 'available'
+        : 'locked';
+
+      const node = document.createElement('div');
+      node.className = `skill-node ${stateClass}`;
+      node.dataset.skillId = skill.id;
+      node.innerHTML = `
+        <div class="icon">${skill.icon || '🌿'}</div>
+        <div class="name">${skill.name}</div>
+        <div class="type">${skill.type}</div>
+      `;
+      if (isUnlocked || isAvailable) {
+        node.addEventListener('click', () => showSkillPopup(skill, stateClass));
+      }
+      container.appendChild(node);
+    });
+  }
+
+  // Simple vérification : une compétence est "available" si son parent est débloqué
+  function checkSkillAvailable(skill, unlockedIds) {
+    if (!skill.parent_id) return true; // racine
+    return unlockedIds.includes(skill.parent_id);
+  }
+
+  function showSkillPopup(skill, state) {
+    const popup = document.querySelector('[data-skill-popup]');
+    const content = document.querySelector('[data-skill-content]');
+    const closeBtn = document.querySelector('[data-popup-close]');
+    if (!popup || !content) return;
+
+    const conditionText = skill.conditions
+      ? JSON.stringify(skill.conditions, null, 2)
+      : 'Aucune condition';
+
+    const rewardText = skill.reward
+      ? JSON.stringify(skill.reward, null, 2)
+      : 'Aucune récompense définie';
+
+    content.innerHTML = `
+      <h2>${skill.name}</h2>
+      <p class="skill-type">${skill.type}</p>
+      <p>${skill.description || 'Pas de description.'}</p>
+      <h3>Conditions</h3>
+      <pre>${conditionText}</pre>
+      <h3>Récompense</h3>
+      <pre>${rewardText}</pre>
+      <div class="skill-state">
+        État : <strong>${state === 'unlocked' ? 'Débloquée 🌟' : state === 'available' ? 'Atteignable 🌱' : 'Verrouillée 🔒'}</strong>
+      </div>
+    `;
+
+    popup.hidden = false;
+    closeBtn.onclick = () => (popup.hidden = true);
+    popup.addEventListener('click', (e) => {
+      if (e.target === popup) popup.hidden = true;
+    });
+  }
+
   function renderDashboardXp(xp) {
     const container = document.querySelector('[data-xp-grid]');
     if (!container) return;
@@ -274,6 +360,9 @@ const Veloskill = (() => {
         break;
       case 'dashboard':
         await initDashboard();
+        break;
+      case 'arbre':
+        await initArbre();
         break;
       case 'boss':
         // initBoss(); // déjà implémenté dans ton module Boss

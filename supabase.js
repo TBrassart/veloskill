@@ -102,3 +102,30 @@ async function fetchUserBossAttempts(userId) {
   return data || [];
 }
 
+// Skills
+async function fetchAllSkills() {
+  const { data, error } = await supabaseClient
+    .from('skills')
+    .select('*')
+    .order('depth', { ascending: true });
+
+  if (error) {
+    console.error('fetchAllSkills error', error);
+    return [];
+  }
+  return data || [];
+}
+
+// Unlocks utilisateur
+async function fetchUserUnlocks(userId) {
+  if (!userId) return [];
+  const { data, error } = await supabaseClient
+    .from('unlocks')
+    .select('skill_id')
+    .eq('user_id', userId);
+  if (error) {
+    console.error('fetchUserUnlocks error', error);
+    return [];
+  }
+  return data.map(d => d.skill_id);
+}

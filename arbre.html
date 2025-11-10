@@ -1,0 +1,40 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Veloskill · Arbre de compétences</title>
+  <link rel="stylesheet" href="style.css" />
+  <script src="https://unpkg.com/@supabase/supabase-js@2"></script>
+  <script src="supabase.js" defer></script>
+  <script src="main.js" defer></script>
+</head>
+<body data-page="arbre">
+  <header class="app-header">
+    <button class="btn ghost" onclick="window.location.href='dashboard.html'">← Retour</button>
+    <h1>Arbre de compétences</h1>
+    <div class="spacer"></div>
+    <div class="avatar-wrapper" data-avatar-dropdown-trigger>
+      <div class="avatar" data-user-avatar>V</div>
+    </div>
+    <div class="avatar-dropdown" data-avatar-dropdown>
+      <div class="avatar-name" data-user-label></div>
+      <hr />
+      <button data-logout>Déconnexion</button>
+    </div>
+  </header>
+
+  <main class="arbre-container">
+    <div class="arbre" data-arbre-container>
+      <!-- rendu dynamique -->
+    </div>
+  </main>
+
+  <div class="skill-popup" data-skill-popup hidden>
+    <div class="popup-inner">
+      <button class="popup-close" data-popup-close>×</button>
+      <div class="skill-popup-content" data-skill-content></div>
+    </div>
+  </div>
+</body>
+</html>
