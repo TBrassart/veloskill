@@ -397,6 +397,96 @@ const Veloskill = (() => {
     });
   }
 
+  async function initProfile() {
+    const sessionData = await loadSessionAndProfile();
+    const user = sessionData?.user;
+    const profile = sessionData?.profile;
+
+    if (!user) {
+      window.location.href = 'index.html';
+      return;
+    }
+
+    const form = document.querySelector('[data-profile-form]');
+    const toggleThemeBtn = document.querySelector('[data-toggle-theme]');
+    const exportBtn = document.querySelector('[data-export-json]');
+
+    // Préremplir
+    form.name.value = profile?.name || '';
+    form.ftp.value = profile?.ftp || '';
+    form.weight.value = profile?.weight || '';
+    form.country.value = profile?.country || '';
+
+    // Soumission
+    form.addEventListener('submit', async (e) => {
+      e.preventDefault();
+      const updates = {
+        name: form.name.value.trim(),
+        ftp: parseFloat(form.ftp.value) || null,
+        weight: parseFloat(form.weight.value) || null,
+        country: form.country.value.trim() || null
+      };
+
+      try {
+        await updateUserProfile(user.id, updates);
+        Veloskill.showToast({
+          type: 'success',
+          title: 'Profil mis à jour',
+          message: 'Tes informations ont bien été enregistrées.'
+        });
+      } catch (err) {
+        Veloskill.showToast({
+          type: 'error',
+          title: 'Erreur',
+          message: 'Impossible de mettre à jour ton profil.'
+        });
+      }
+    });
+
+    // Thème
+    toggleThemeBtn.addEventListener('click', () => {
+      document.body.classList.toggle('light-theme');
+      const mode = document.body.classList.contains('light-theme')
+        ? 'Thème clair activé ☀️'
+        : 'Thème sombre activé 🌙';
+      Veloskill.showToast({ type: 'info', title: 'Apparence', message: mode });
+      localStorage.setItem('veloskill-theme', document.body.classList.contains('light-theme') ? 'light' : 'dark');
+    });
+
+    // Export JSON
+    exportBtn.addEventListener('click', async () => {
+      try {
+        const xp = await fetchUserXp(user.id);
+        const unlocks = await fetchUserUnlocks(user.id);
+        const data = { profile, xp, unlocks };
+
+        const blob = new Blob([JSON.stringify(data, null, 2)], { type: 'application/json' });
+        const url = URL.createObjectURL(blob);
+        const a = document.createElement('a');
+        a.href = url;
+        a.download = `veloskill_profile_${profile?.name || user.id}.json`;
+        a.click();
+        URL.revokeObjectURL(url);
+
+        Veloskill.showToast({
+          type: 'success',
+          title: 'Export réussi',
+          message: 'Tes données ont été téléchargées au format JSON.'
+        });
+      } catch (e) {
+        Veloskill.showToast({
+          type: 'error',
+          title: 'Export échoué',
+          message: 'Impossible de récupérer tes données.'
+        });
+      }
+    });
+
+    // Thème initial
+    const savedTheme = localStorage.getItem('veloskill-theme');
+    if (savedTheme === 'light') document.body.classList.add('light-theme');
+  }
+
   function computeLevelFromXp(xp) {
     return Math.floor(Math.sqrt((xp || 0) / 100)) + 1;
   }
@@ -452,7 +542,7 @@ const Veloskill = (() => {
         // initBoss(); // déjà implémenté dans ton module Boss
         break;
       case 'profile':
-        // initProfile();
+        await initProfile();
         break;
       // autres pages à venir
     }

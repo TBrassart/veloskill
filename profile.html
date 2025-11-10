@@ -1,0 +1,62 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Veloskill · Profil & Paramètres</title>
+  <link rel="stylesheet" href="style.css" />
+  <script src="https://unpkg.com/@supabase/supabase-js@2"></script>
+  <script src="supabase.js" defer></script>
+  <script src="main.js" defer></script>
+</head>
+<body data-page="profile">
+  <header class="app-header">
+    <button class="btn ghost" onclick="window.location.href='dashboard.html'">← Retour</button>
+    <h1>Profil & Paramètres</h1>
+    <div class="spacer"></div>
+    <div class="avatar-wrapper" data-avatar-dropdown-trigger>
+      <div class="avatar" data-user-avatar>V</div>
+    </div>
+    <div class="avatar-dropdown" data-avatar-dropdown>
+      <div class="avatar-name" data-user-label></div>
+      <hr />
+      <button data-logout>Déconnexion</button>
+    </div>
+  </header>
+
+  <main class="profile-page">
+    <section class="profile-form">
+      <h2>Mon profil cycliste</h2>
+      <form data-profile-form>
+        <label>
+          Nom
+          <input type="text" name="name" required />
+        </label>
+        <label>
+          FTP (Watts)
+          <input type="number" name="ftp" min="0" step="1" />
+        </label>
+        <label>
+          Poids (kg)
+          <input type="number" name="weight" min="0" step="0.1" />
+        </label>
+        <label>
+          Pays
+          <input type="text" name="country" />
+        </label>
+        <button class="btn primary" type="submit">💾 Enregistrer</button>
+      </form>
+    </section>
+
+    <section class="theme-section">
+      <h2>Apparence</h2>
+      <button class="btn subtle" data-toggle-theme>Changer de thème</button>
+    </section>
+
+    <section class="export-section">
+      <h2>Export</h2>
+      <button class="btn subtle" data-export-json>Exporter mes données JSON</button>
+    </section>
+  </main>
+</body>
+</html>

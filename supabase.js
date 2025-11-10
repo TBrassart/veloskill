@@ -60,6 +60,21 @@ async function fetchUserProfile(userId) {
   return data;
 }
 
+async function updateUserProfile(userId, updates) {
+  const { data, error } = await supabaseClient
+    .from('users')
+    .update(updates)
+    .eq('id', userId)
+    .select()
+    .single();
+
+  if (error) {
+    console.error('updateUserProfile error', error);
+    throw error;
+  }
+  return data;
+}
+
 // XP par axe
 async function fetchUserXp(userId) {
   if (!userId) return null;
