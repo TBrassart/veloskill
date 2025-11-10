@@ -1,0 +1,49 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Veloskill · Tableau de bord</title>
+  <link rel="stylesheet" href="style.css" />
+  <script src="https://unpkg.com/@supabase/supabase-js@2"></script>
+  <script src="supabase.js" defer></script>
+  <script src="main.js" defer></script>
+</head>
+<body data-page="dashboard">
+  <header class="app-header">
+    <div class="logo small" onclick="window.location.href='index.html'">🚴‍♂️ Veloskill</div>
+
+    <div class="header-actions">
+      <button class="btn subtle" id="sync-strava-btn">🔄 Sync Strava</button>
+      <div class="avatar-wrapper" data-avatar-dropdown-trigger>
+        <div class="avatar" data-user-avatar>V</div>
+      </div>
+      <div class="avatar-dropdown" data-avatar-dropdown>
+        <div class="avatar-name" data-user-label></div>
+        <hr />
+        <a href="profile.html">Profil</a>
+        <a href="activities.html">Mes sorties</a>
+        <a href="arbre.html">Arbre de compétences</a>
+        <hr />
+        <button data-logout>Déconnexion</button>
+      </div>
+    </div>
+  </header>
+
+  <main class="dashboard">
+    <section class="dashboard-greeting">
+      <h1>Salut, <span data-user-label>cycliste</span> 👋</h1>
+      <p>Voici ta progression actuelle sur Veloskill.</p>
+    </section>
+
+    <section class="xp-grid" data-xp-grid>
+      <!-- Rempli dynamiquement par main.js -->
+    </section>
+
+    <section class="dashboard-cta">
+      <div class="boss-preview" data-boss-preview></div>
+      <a href="arbre.html" class="btn primary">Explorer ton arbre de compétences</a>
+    </section>
+  </main>
+</body>
+</html>

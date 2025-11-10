@@ -1,0 +1,42 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Veloskill · Cyclisme & Progression</title>
+  <link rel="stylesheet" href="style.css" />
+  <script src="https://unpkg.com/@supabase/supabase-js@2"></script>
+  <script src="supabase.js" defer></script>
+  <script src="main.js" defer></script>
+</head>
+<body data-page="landing">
+  <main class="landing">
+
+    <header class="landing-header">
+      <div class="logo">🚴‍♂️ <span>Veloskill</span></div>
+      <div class="subtext">Ton évolution cycliste, sans compétition.</div>
+    </header>
+
+    <section class="hero">
+      <h1>Transforme tes sorties Strava en progression vivante.</h1>
+      <p>Chaque sortie alimente tes jauges d’endurance, d’explosivité, de mental et de stratégie.</p>
+
+      <div class="hero-actions">
+        <button class="btn primary" data-action="start">Connexion Strava</button>
+        <button class="btn ghost" data-action="demo">Mode démo</button>
+      </div>
+
+      <div class="status-area" data-auth-status hidden>
+        <div class="loader"></div>
+        <div class="status-text">Connexion à Strava en cours...</div>
+      </div>
+    </section>
+
+    <footer class="landing-footer">
+      <p>Veloskill est une application indépendante, non affiliée à Strava.</p>
+      <p class="small">© 2025 Veloskill — version locale</p>
+    </footer>
+
+  </main>
+</body>
+</html>
