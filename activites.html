@@ -1,0 +1,44 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Veloskill · Mes activités</title>
+  <link rel="stylesheet" href="style.css" />
+  <script src="https://unpkg.com/@supabase/supabase-js@2"></script>
+  <script src="supabase.js" defer></script>
+  <script src="main.js" defer></script>
+</head>
+<body data-page="activities">
+  <header class="app-header">
+    <button class="btn ghost" onclick="window.location.href='dashboard.html'">← Retour</button>
+    <h1>Mes activités Strava</h1>
+    <div class="spacer"></div>
+    <div class="avatar-wrapper" data-avatar-dropdown-trigger>
+      <div class="avatar" data-user-avatar>V</div>
+    </div>
+    <div class="avatar-dropdown" data-avatar-dropdown>
+      <div class="avatar-name" data-user-label></div>
+      <hr />
+      <button data-logout>Déconnexion</button>
+    </div>
+  </header>
+
+  <main class="activities-page">
+    <div class="activities-controls">
+      <input type="text" placeholder="🔍 Rechercher une activité..." data-search />
+      <select data-type-filter>
+        <option value="">Tous types</option>
+        <option value="Ride">Sortie route</option>
+        <option value="VirtualRide">Zwift / Indoor</option>
+        <option value="GravelRide">Gravel</option>
+        <option value="EBikeRide">E-Bike</option>
+      </select>
+    </div>
+
+    <div class="activities-list" data-activities-list>
+      <!-- rempli dynamiquement -->
+    </div>
+  </main>
+</body>
+</html>

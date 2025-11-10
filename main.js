@@ -487,6 +487,76 @@ const Veloskill = (() => {
     if (savedTheme === 'light') document.body.classList.add('light-theme');
   }
 
+  async function initActivities() {
+    const sessionData = await loadSessionAndProfile();
+    const user = sessionData?.user;
+    if (!user) {
+      window.location.href = 'index.html';
+      return;
+    }
+
+    const listContainer = document.querySelector('[data-activities-list]');
+    const searchInput = document.querySelector('[data-search]');
+    const typeSelect = document.querySelector('[data-type-filter]');
+
+    // Chargement initial
+    let activities = await fetchUserActivities(user.id);
+    renderActivitiesList(activities);
+
+    // Recherche
+    searchInput.addEventListener('input', async () => {
+      const search = searchInput.value.trim();
+      const type = typeSelect.value;
+      activities = await fetchUserActivities(user.id, search, type);
+      renderActivitiesList(activities);
+    });
+
+    // Filtre par type
+    typeSelect.addEventListener('change', async () => {
+      const search = searchInput.value.trim();
+      const type = typeSelect.value;
+      activities = await fetchUserActivities(user.id, search, type);
+      renderActivitiesList(activities);
+    });
+  }
+
+  function renderActivitiesList(activities) {
+    const container = document.querySelector('[data-activities-list]');
+    if (!container) return;
+    container.innerHTML = '';
+
+    if (!activities.length) {
+      container.innerHTML = `<p style="text-align:center;color:#888;">Aucune activité trouvée.</p>`;
+      return;
+    }
+
+    activities.forEach(act => {
+      const card = document.createElement('div');
+      card.className = 'activity-card';
+      const date = new Date(act.date);
+      const formattedDate = date.toLocaleDateString('fr-FR', { day: '2-digit', month: 'short', year: 'numeric' });
+      const distance = act.distance ? (act.distance / 1000).toFixed(1) : 0;
+      const elev = act.elevation || 0;
+      const power = act.avg_power ? Math.round(act.avg_power) : '—';
+      const durationH = Math.floor((act.duration || 0) / 3600);
+      const durationM = Math.floor(((act.duration || 0) % 3600) / 60);
+
+      card.innerHTML = `
+        <div class="activity-info">
+          <div class="activity-title">${act.location || act.type || 'Sortie'}</div>
+          <div class="activity-meta">${formattedDate} • ${act.type || 'Ride'}</div>
+        </div>
+        <div class="activity-stats">
+          <span>🚴‍♂️ <strong>${distance}</strong> km</span>
+          <span>⛰️ <strong>${elev}</strong> m</span>
+          <span>⚡ <strong>${power}</strong> W</span>
+          <span>⏱️ <strong>${durationH}h${durationM.toString().padStart(2,'0')}</strong></span>
+        </div>
+      `;
+      container.appendChild(card);
+    });
+  }
+
   function computeLevelFromXp(xp) {
     return Math.floor(Math.sqrt((xp || 0) / 100)) + 1;
   }
@@ -543,6 +613,9 @@ const Veloskill = (() => {
         break;
       case 'profile':
         await initProfile();
+        break;
+      case 'activities':
+        await initActivities();
         break;
       // autres pages à venir
     }

@@ -158,3 +158,24 @@ async function fetchUserUnlocks(userId) {
   }
   return data.map(d => d.skill_id);
 }
+
+async function fetchUserActivities(userId, search = '', type = '') {
+  if (!userId) return [];
+  let query = supabaseClient
+    .from('activities')
+    .select('*')
+    .eq('user_id', userId)
+    .order('date', { ascending: false })
+    .limit(50);
+
+  if (type) query = query.eq('type', type);
+  if (search) query = query.ilike('location', `%${search}%`);
+
+  const { data, error } = await query;
+  if (error) {
+    console.error('fetchUserActivities error', error);
+    return [];
+  }
+  return data || [];
+}
+

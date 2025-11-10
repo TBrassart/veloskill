@@ -464,3 +464,73 @@ body.light-theme input {
   color: #111;
   border: 1px solid #ccc;
 }
+
+/* ---- Activités ---- */
+.activities-page {
+  max-width: 900px;
+  margin: 2rem auto;
+  padding: 0 1rem;
+}
+
+.activities-controls {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 1.5rem;
+  gap: 1rem;
+}
+
+.activities-controls input,
+.activities-controls select {
+  background: #1a1a1a;
+  border: 1px solid #333;
+  color: #f7f7f7;
+  padding: 0.6rem 0.8rem;
+  border-radius: 6px;
+  flex: 1;
+}
+
+.activities-list {
+  display: flex;
+  flex-direction: column;
+  gap: 1rem;
+}
+
+.activity-card {
+  background: #121212;
+  border-radius: 10px;
+  padding: 1rem 1.2rem;
+  box-shadow: 0 4px 8px rgba(0,0,0,0.3);
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  transition: transform 0.15s ease;
+}
+.activity-card:hover {
+  transform: translateY(-2px);
+}
+
+.activity-info {
+  display: flex;
+  flex-direction: column;
+  gap: 0.2rem;
+}
+.activity-title {
+  font-weight: 600;
+}
+.activity-meta {
+  color: #aaa;
+  font-size: 0.85rem;
+}
+
+.activity-stats {
+  display: flex;
+  gap: 1.2rem;
+  font-size: 0.9rem;
+}
+.activity-stats span {
+  color: #ccc;
+}
+.activity-stats strong {
+  color: #fff;
+}
