@@ -557,6 +557,49 @@ const Veloskill = (() => {
     });
   }
 
+  async function initBadges() {
+    const sessionData = await loadSessionAndProfile();
+    const user = sessionData?.user;
+    if (!user) {
+      window.location.href = 'index.html';
+      return;
+    }
+
+    const filterSelect = document.querySelector('[data-badge-filter]');
+    const grid = document.querySelector('[data-badges-grid]');
+
+    let badges = await fetchUserBadges(user.id);
+    renderBadgesList(badges);
+
+    filterSelect.addEventListener('change', () => {
+      const filter = filterSelect.value;
+      const filtered = filter ? badges.filter(b => b.type === filter) : badges;
+      renderBadgesList(filtered);
+    });
+  }
+
+  function renderBadgesList(badges) {
+    const grid = document.querySelector('[data-badges-grid]');
+    if (!grid) return;
+
+    grid.innerHTML = '';
+    if (!badges.length) {
+      grid.innerHTML = `<p style="text-align:center;color:#888;">Aucun badge débloqué pour le moment.</p>`;
+      return;
+    }
+
+    badges.forEach(badge => {
+      const card = document.createElement('div');
+      card.className = `badge-card badge-type-${badge.type}`;
+      card.innerHTML = `
+        <div class="badge-icon">${badge.icon}</div>
+        <div class="badge-title">${badge.title}</div>
+        <div class="badge-desc">${badge.desc || ''}</div>
+      `;
+      grid.appendChild(card);
+    });
+  }
+
   function computeLevelFromXp(xp) {
     return Math.floor(Math.sqrt((xp || 0) / 100)) + 1;
   }
@@ -616,6 +659,9 @@ const Veloskill = (() => {
         break;
       case 'activities':
         await initActivities();
+        break;
+      case 'badges':
+        await initBadges();
         break;
       // autres pages à venir
     }

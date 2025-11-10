@@ -179,3 +179,42 @@ async function fetchUserActivities(userId, search = '', type = '') {
   return data || [];
 }
 
+async function fetchUserBadges(userId) {
+  if (!userId) return [];
+
+  // 1. Compétences débloquées
+  const { data: unlockedSkills, error: err1 } = await supabaseClient
+    .from('unlocks')
+    .select('skill_id, skills(name, description, icon, type)')
+    .eq('user_id', userId)
+    .order('unlocked_at', { ascending: false });
+
+  // 2. Boss vaincus
+  const { data: bossVictories, error: err2 } = await supabaseClient
+    .from('boss_attempts')
+    .select('boss_id, bosses(nom, description, recompense)')
+    .eq('user_id', userId)
+    .eq('statut', 'reussi')
+    .order('updated_at', { ascending: false });
+
+  if (err1 || err2) {
+    console.error('fetchUserBadges error', err1 || err2);
+    return [];
+  }
+
+  const skillBadges = (unlockedSkills || []).map(u => ({
+    type: 'skill',
+    title: u.skills.name,
+    desc: u.skills.description,
+    icon: u.skills.icon || '🌿'
+  }));
+
+  const bossBadges = (bossVictories || []).map(b => ({
+    type: 'boss',
+    title: b.bosses.nom,
+    desc: b.bosses.description || b.bosses.recompense,
+    icon: '🏆'
+  }));
+
+  return [...skillBadges, ...bossBadges];
+}

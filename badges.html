@@ -1,0 +1,41 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Veloskill · Badges & Récompenses</title>
+  <link rel="stylesheet" href="style.css" />
+  <script src="https://unpkg.com/@supabase/supabase-js@2"></script>
+  <script src="supabase.js" defer></script>
+  <script src="main.js" defer></script>
+</head>
+<body data-page="badges">
+  <header class="app-header">
+    <button class="btn ghost" onclick="window.location.href='dashboard.html'">← Retour</button>
+    <h1>Badges & Récompenses</h1>
+    <div class="spacer"></div>
+    <div class="avatar-wrapper" data-avatar-dropdown-trigger>
+      <div class="avatar" data-user-avatar>V</div>
+    </div>
+    <div class="avatar-dropdown" data-avatar-dropdown>
+      <div class="avatar-name" data-user-label></div>
+      <hr />
+      <button data-logout>Déconnexion</button>
+    </div>
+  </header>
+
+  <main class="badges-page">
+    <div class="badges-filters">
+      <select data-badge-filter>
+        <option value="">Tous les badges</option>
+        <option value="skill">Compétences</option>
+        <option value="boss">Boss</option>
+      </select>
+    </div>
+
+    <div class="badges-grid" data-badges-grid>
+      <!-- rempli dynamiquement -->
+    </div>
+  </main>
+</body>
+</html>
