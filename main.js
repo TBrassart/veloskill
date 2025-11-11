@@ -170,22 +170,53 @@ const Veloskill = (() => {
     const syncBtn = document.getElementById('sync-strava-btn');
     if (syncBtn) {
       syncBtn.addEventListener('click', async () => {
-        showToast({
+        Veloskill.showToast({
           type: 'info',
           title: 'Synchronisation Strava',
           message: 'Synchronisation en cours...'
         });
+
         try {
-          await new Promise((res) => setTimeout(res, 1500));
-          showToast({
+          // 🔄 Étape 1 : simule ou appelle la vraie sync Strava ici
+          // (ici on simule juste un délai réseau)
+          await new Promise((res) => setTimeout(res, 2000));
+
+          // 🔄 Étape 2 : recalcul des XP immédiatement après la sync
+          const newXp = await Veloskill.calculateXpFromActivities(user.id);
+
+          const oldXp = await getOrComputeUserXp(user.id);
+          const oldLevel = computeLevelFromXp(oldXp.endurance);
+          const newLevel = computeLevelFromXp(newXp.endurance);
+
+          if (newLevel > oldLevel) {
+            Veloskill.showToast({
+              type: 'success',
+              title: `🎉 Niveau ${newLevel} atteint !`,
+              message: 'Nouvelle étape franchie sur ton axe Endurance 🌿'
+            });
+          }
+
+          // 🔄 Étape 3 : met à jour l'affichage du dashboard
+          renderDashboardXp(newXp);
+
+          // 🔔 Étape 4 : toasts motivants
+          Veloskill.showToast({
             type: 'success',
-            title: 'Strava synchronisé',
-            message: 'Tes dernières sorties sont à jour 🚴‍♂️'
+            title: 'Strava synchronisé ✅',
+            message: 'Tes dernières sorties ont bien été importées.'
           });
-        } catch {
-          showToast({
+
+          Veloskill.showToast({
+            type: 'info',
+            title: 'Progression mise à jour',
+            message: `+${Math.round(newXp.endurance)} XP Endurance · +${Math.round(newXp.explosivity)} XP Explosivité`
+          });
+
+        } catch (err) {
+          console.error(err);
+          Veloskill.showToast({
             type: 'error',
-            title: 'Erreur de synchro',
+            title: 'Erreur de synchronisation',
             message: 'Impossible de contacter Strava pour le moment.'
           });
         }
@@ -416,34 +447,63 @@ const Veloskill = (() => {
     };
 
     // ✅ Puis sauvegarde dans Supabase
-    await supabaseClient.from('xp').upsert({ user_id: userId, ...xp });
+    await supabaseClient
+      .from('xp')
+      .upsert({
+        user_id: userId,
+        ...xp,
+        last_update: new Date().toISOString()
+      });
 
     return xp;
   }
 
   /* --------------------- RÉCUPÉRATION XP UTILISATEUR --------------------- */
   async function getOrComputeUserXp(userId) {
-    // Tente de récupérer les XP existants en base
+    // 1️⃣ Récupération de la ligne XP
     const { data, error } = await supabaseClient
       .from('xp')
       .select('*')
       .eq('user_id', userId)
       .maybeSingle();
 
-    // Si on trouve une ligne, on la renvoie directement
-    if (data && !error) {
-      return {
-        endurance: data.endurance || 0,
-        explosivity: data.explosivity || 0,
-        mental: data.mental || 0,
-        strategy: data.strategy || 0
-      };
+    // 2️⃣ Si erreur, recalcul direct
+    if (error) {
+      console.warn("Erreur lecture XP :", error);
+      return await calculateXpFromActivities(userId);
     }
 
-    // Sinon, on les calcule à partir des activités
-    const xp = await calculateXpFromActivities(userId);
-    return xp;
+    // 3️⃣ Si pas de ligne, recalcul direct
+    if (!data) {
+      console.log("Aucun XP trouvé → calcul initial");
+      return await calculateXpFromActivities(userId);
+    }
+
+    // 4️⃣ Vérifie la date du dernier recalcul
+    const lastUpdate = new Date(data.last_update);
+    const now = new Date();
+    const diffHours = (now - lastUpdate) / 1000 / 3600;
+
+    if (diffHours > 24) {
+      console.log(`Dernier calcul XP > ${Math.round(diffHours)}h → recalcul...`);
+      const newXp = await calculateXpFromActivities(userId);
+      Veloskill.showToast({
+        type: 'info',
+        title: 'Progression mise à jour',
+        message: 'Tes jauges XP ont été recalculées à partir de tes dernières sorties 🚴‍♂️'
+      });
+      return newXp;
+    }
+
+    // 5️⃣ Sinon, renvoie simplement les valeurs existantes
+    return {
+      endurance: data.endurance || 0,
+      explosivity: data.explosivity || 0,
+      mental: data.mental || 0,
+      strategy: data.strategy || 0
+    };
   }
+
 
   function renderDashboardXp(xp) {
     const container = document.querySelector('[data-xp-grid]');
