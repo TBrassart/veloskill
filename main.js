@@ -519,6 +519,10 @@ function computeActivityStats(activities) {
     totals.distance_km += dist;
     totals.elevation_m += elev;
     totals.duration_h += dur;
+    totals.weeks_active = computeActiveWeeks(activities);
+    totals.trainer_duration_h_max = Math.max(
+      ...activities.filter(a => a.trainer).map(a => a.moving_time_s / 3600)
+    );
 
     if (dist > maxDistance) maxDistance = dist;
     if (elev > maxElevation) maxElevation = elev;
@@ -538,8 +542,19 @@ function computeActivityStats(activities) {
   };
 }
 
+function computeActiveWeeks(activities) {
+  const weeks = new Set();
+  for (const a of activities) {
+    const date = new Date(a.start_date);
+    const year = date.getFullYear();
+    const week = Math.ceil((((date - new Date(year, 0, 1)) / 86400000) + new Date(year, 0, 1).getDay() + 1) / 7);
+    weeks.add(`${year}-${week}`);
+  }
+  return weeks.size;
+}
+
 // Évalue une condition (total, single_ride, geo, etc.)
-function evaluateCondition(cond, stats) {
+async function evaluateCondition(cond, stats, userId) {
   const c = typeof cond === 'string' ? JSON.parse(cond) : cond;
   if (!c) return 0;
 
@@ -560,6 +575,24 @@ function evaluateCondition(cond, stats) {
       break;
     case 'record':
       metricValue = stats[c.metric + '_max'] || 0;
+      break;
+    case 'average':
+      metricValue = stats[c.metric] || 0;
+      break;
+    case 'streak':
+      metricValue = stats.weeks_active || 0;
+      break;
+    case 'trainer':
+      metricValue = stats.trainer_duration_h_max || 0;
+      break;
+    case 'segment':
+      // Cas spécial : vérifier si l'utilisateur a déjà le segment_id dans sa table segments
+      const { data: segData } = await supabaseClient
+        .from('segments')
+        .select('segment_id')
+        .eq('user_id', userId);
+      const segmentIds = segData.map(s => s.segment_id);
+      metricValue = segmentIds.includes(c.thresholds[0]) ? c.thresholds[0] : 0;
       break;
     default:
       return 0;
