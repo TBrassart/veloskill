@@ -280,19 +280,3 @@ async function syncStravaActivities(userId) {
   await supabaseClient.from('strava_tokens').update({ initial_sync_done: true }).eq('user_id', userId);
 }
 
-syncBtn.addEventListener('click', async () => {
-  try {
-    await syncStravaActivities(user.id);
-    Veloskill.showToast({
-      type: 'success',
-      title: 'Synchronisation terminée',
-      message: 'Tes dernières activités Strava ont été importées 🚴‍♂️'
-    });
-  } catch (e) {
-    Veloskill.showToast({
-      type: 'error',
-      title: 'Erreur Strava',
-      message: 'Impossible de synchroniser tes activités.'
-    });
-  }
-});
