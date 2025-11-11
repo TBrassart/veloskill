@@ -363,7 +363,9 @@ const Veloskill = (() => {
   /* --------------------- CALCUL XP DYNAMIQUE --------------------- */
   // Calcule les 4 jauges à partir des activités Strava de l'utilisateur
   async function calculateXpFromActivities(userId) {
+    console.log("Calcul XP pour user:", userId);
     const activities = await fetchUserActivities(userId);
+    console.log("Activités trouvées:", activities);
     if (!activities || !activities.length) {
       return { endurance: 0, explosivity: 0, mental: 0, strategy: 0 };
     }
