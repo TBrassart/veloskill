@@ -393,7 +393,7 @@ const Veloskill = (() => {
     };
 
     // ✅ Puis sauvegarde dans Supabase
-    await supabaseClient.from('user_xp').upsert({ user_id: userId, ...xp });
+    await supabaseClient.from('xp').upsert({ user_id: userId, ...xp });
 
     return xp;
   }
@@ -402,7 +402,7 @@ const Veloskill = (() => {
   async function getOrComputeUserXp(userId) {
     // Tente de récupérer les XP existants en base
     const { data, error } = await supabaseClient
-      .from('user_xp')
+      .from('xp')
       .select('*')
       .eq('user_id', userId)
       .maybeSingle();
