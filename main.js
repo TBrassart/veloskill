@@ -199,6 +199,9 @@ const Veloskill = (() => {
     const xp = await getOrComputeUserXp(user.id);
     renderDashboardXp(xp);
 
+    // ⚙️ Met à jour automatiquement les maîtrises au chargement
+    await updateUserMasteries(user.id); 
+
     // 🔍 Récupère et affiche le niveau global
     const globalXp = await fetchGlobalXp(user.id);
 
@@ -223,6 +226,9 @@ const Veloskill = (() => {
           
           // ➕ mise à jour de la progression Boss
           await updateBossProgress(user.id);
+
+          // 🔄 Mise à jour automatique des maîtrises
+          await updateUserMasteries(user.id);
 
           const oldXp = await getOrComputeUserXp(user.id);
           const oldLevel = computeLevelFromXp(oldXp.endurance);
@@ -264,55 +270,60 @@ const Veloskill = (() => {
     }
   }
 
-async function fetchUserUnlocks(userId) {
-  // Lit les compétences déjà validées dans user_skills_progress
-  const { data, error } = await supabaseClient
-    .from('user_skills_progress')
-    .select('skill_id, is_met')
-    .eq('user_id', userId)
-    .eq('is_met', true);
+/* ============================================
+   MAÎTRISES – Grille de cartes multi-niveaux
+============================================ */
 
-  if (error) {
-    console.error('Erreur fetchUserUnlocks:', error);
-    return [];
-  }
-
-  return (data || []).map(row => row.skill_id);
-}
-
-
-/* ===========================================================
-   🌳 MODULE COMPÉTENCES — VERSION COMPLÈTE ET FONCTIONNELLE
-   =========================================================== */
-
-async function initArbre() {
+async function initMasteries() {
   const sessionData = await loadSessionAndProfile();
   const user = sessionData?.user;
   if (!user) return (window.location.href = 'index.html');
 
-  let [skills, unlockedIds, xp] = await Promise.all([
-    fetchAllSkills(),
-    fetchUserUnlocks(user.id),
-    getOrComputeUserXp(user.id)
+  // Met à jour les niveaux automatiquement avant affichage
+  await updateUserMasteries(user.id);
+  
+  const [masteries, userLevels] = await Promise.all([
+    fetchMasteries(),
+    fetchUserMasteries(user.id)
   ]);
 
-  // 🔁 met à jour user_skills_progress en fonction de l’historique
-  unlockedIds = await updateUnlockedSkillsFromHistory(user.id, skills, unlockedIds, xp);
-
-  const trees = buildSkillTrees(skills);
-  renderArbreOverview(trees, unlockedIds, xp, user.id);
+  renderMasteries(masteries, userLevels);
 }
 
-/** Vue principale avec les 5 blocs */
-function renderArbreOverview(trees, unlockedIds, xp, userId) {
-  const overview = document.querySelector('[data-arbre-overview]');
-  const container = document.querySelector('[data-arbre-container]');
-  const btnRetour = document.querySelector('[data-btn-retour]');
+async function fetchMasteries() {
+  const { data, error } = await supabaseClient
+    .from('masteries')
+    .select('*')
+    .order('category', { ascending: true });
+  if (error) {
+    console.error('Erreur fetchMasteries:', error);
+    return [];
+  }
+  return data || [];
+}
 
-  overview.innerHTML = '';
-  overview.classList.add('view--active');
-  container.classList.remove('view--active');
-  btnRetour.classList.remove('is-visible');
+async function fetchUserMasteries(userId) {
+  const { data, error } = await supabaseClient
+    .from('user_masteries')
+    .select('mastery_id, level')
+    .eq('user_id', userId);
+  if (error) {
+    console.error('Erreur fetchUserMasteries:', error);
+    return {};
+  }
+  const map = {};
+  (data || []).forEach(row => {
+    map[row.mastery_id] = row.level;
+  });
+  return map;
+}
+
+function renderMasteries(masteries, userLevels) {
+  const grids = document.querySelectorAll('[data-mastery-grid]');
+  if (!grids.length) return;
+
+  // Nettoie
+  grids.forEach(g => (g.innerHTML = ''));
 
   const colors = {
     endurance: '#42c779',
@@ -322,344 +333,44 @@ function renderArbreOverview(trees, unlockedIds, xp, userId) {
     special: '#9a5df5'
   };
 
-  const icons = {
-    endurance: '🌿',
-    explosivity: '⚡',
-    mental: '🧠',
-    strategy: '🎯',
-    special: '💜'
-  };
+  masteries.forEach(m => {
+    const grid = document.querySelector(`[data-mastery-grid="${m.category}"]`);
+    if (!grid) return;
 
-  for (const [type, list] of Object.entries(trees)) {
-    const unlockedCount = list.filter(s => unlockedIds.includes(s.id)).length;
-    const total = list.length;
+    const level = userLevels[m.id] || 0;
+    const max = m.max_level || 5;
+    const pct = Math.max(0, Math.min(100, (level / max) * 100));
 
-    const block = document.createElement('div');
-    block.className = `arbre-block ${type}`;
-    block.style.setProperty('--color', colors[type]);
-    block.innerHTML = `
-      <div class="arbre-block-bg"></div>
-      <div class="arbre-block-content">
-        <div class="icon">${icons[type]}</div>
-        <div class="title">${capitalize(type)}</div>
-        <div class="progress">${unlockedCount}/${total} débloquées</div>
+    const card = document.createElement('div');
+    card.className = 'mastery-card';
+    card.style.setProperty('--color', colors[m.category] || '#42c779');
+    card.innerHTML = `
+      <div class="mastery-icon">${m.icon || '⬜'}</div>
+      <div class="mastery-name">${m.name}</div>
+      <div class="mastery-level">
+        <div class="mastery-level-bar" style="width:${pct}%"></div>
       </div>
+      <div class="mastery-level-text">Niveau ${level}/${max}</div>
     `;
 
-    block.addEventListener('click', async () => {
-      // Vue détaillée visible
-      overview.classList.remove('view--active');
-      container.classList.add('view--active');
-      btnRetour.classList.add('is-visible');
-      
-      // Nettoyage
-      container.innerHTML = '';
+    card.addEventListener('click', () => openMasteryPopup(m, level, max, colors[m.category]));
 
-      // On construit l’arbre complet et on l’insère dans le container
-      const tree = await renderSkillTreeRecursive(list, unlockedIds, colors[type], xp, userId, null, 1);
-      if (tree) container.appendChild(tree);
-
-      window.scrollTo({ top: 0, behavior: 'smooth' });
-    });
-
-    overview.appendChild(block);
-  }
-
-  btnRetour.addEventListener('click', () => {
-    container.classList.remove('view--active');
-    overview.classList.add('view--active');
-    btnRetour.classList.remove('is-visible');
+    grid.appendChild(card);
   });
 }
 
-/* -----------------------------------------------------------
-   🔧 Construction et rendu des arbres
------------------------------------------------------------ */
-
-function buildSkillTrees(skills) {
-  const groups = {
-    endurance: [],
-    explosivity: [],
-    mental: [],
-    strategy: [],
-    special: []
-  };
-
-  for (const s of skills) {
-    const key = s.type?.toLowerCase() || 'special';
-    if (!groups[key]) groups[key] = [];
-    groups[key].push(s);
-  }
-
-  for (const key in groups) {
-    groups[key].sort((a, b) => (a.depth || 1) - (b.depth || 1));
-  }
-
-  return groups;
-}
-
-/** Rendu principal : 5 colonnes côte à côte */
-async function renderSkillTrees(trees, unlockedIds, xp, userId) {
-  const container = document.querySelector('[data-arbre-container]');
-  if (!container) return;
-  container.innerHTML = '';
-
-  const colors = {
-    endurance: '#42c779',
-    explosivity: '#f04a4a',
-    mental: '#5b74ff',
-    strategy: '#f2b01e',
-    special: '#9a5df5'
-  };
-
-  for (const [type, list] of Object.entries(trees)) {
-    const column = document.createElement('div');
-    column.className = `skill-tree ${type}`;
-    column.style.color = colors[type];
-    column.innerHTML = `<h3 class="skill-tree-title">${capitalize(type)}</h3>`;
-    const tree = await renderSkillTreeRecursive(list, unlockedIds, colors[type], xp, userId, null, 1);
-    column.appendChild(tree);
-    container.appendChild(column);
-  }
-}
-
-/** Génère les nœuds reliés verticalement */
-async function renderSkillTreeRecursive(skills, unlockedIds, color, xp, userId, parentId = null, depth = 1) {
-  const container = document.querySelector('[data-arbre-container]');
-  if (!container) return;
-
-  if (depth === 1) container.innerHTML = ''; // reset lors de l'ouverture
-
-  const nodes = skills.filter(s => {
-    if (parentId === null) {
-      // 🔹 Vraies racines : pas de parent_id OU parent_id inexistant dans la liste
-      return !s.parent_id || !skills.find(x => x.id === s.parent_id);
-    }
-    // 🔹 Enfants directs
-    return s.parent_id === parentId;
-  });
-  if (!nodes.length) return null;
-
-  const layer = document.createElement('div');
-  layer.className = 'skill-layer';
-
-  nodes.sort((a, b) => (a.depth || 0) - (b.depth || 0));
-  for (const skill of nodes) {
-    const isUnlocked = unlockedIds.includes(skill.id);
-    const isAvailable = !isUnlocked && await checkSkillAvailable(skill, unlockedIds, xp, userId);
-    const state = isUnlocked ? 'unlocked' : isAvailable ? 'available' : 'locked';
-
-    const nodeWrapper = document.createElement('div');
-    nodeWrapper.className = 'skill-node-wrapper';
-
-    const node = document.createElement('div');
-    node.className = `skill-node ${state}`;
-    node.style.borderColor = color;
-    node.innerHTML = `<span>${skill.icon || '🌿'}</span>`;
-    node.addEventListener('click', () => showSkillPopup(skill, state));
-    nodeWrapper.appendChild(node);
-
-    const childrenLayer = await renderSkillTreeRecursive(skills, unlockedIds, color, xp, userId, skill.id, depth + 1);
-    if (childrenLayer) nodeWrapper.appendChild(childrenLayer);
-
-    layer.appendChild(nodeWrapper);
-  }
-
-  container.appendChild(layer);
-}
-
-/* -----------------------------------------------------------
-   🧮 Calculs utilisateurs (totaux, conditions)
------------------------------------------------------------ */
-
-function computeUserTotals(activities) {
-  const totals = {
-    distance_km: 0,
-    elevation_m: 0,
-    rides: activities.length,
-    long_rides_120k: 0,
-    rides_over_2000m: 0,
-    long_8h: 0
-  };
-
-  for (const a of activities) {
-    const dist = Number(a.distance) || 0;
-    const elev = Number(a.elevation) || 0;
-    const dur = Number(a.duration) || 0;
-
-    totals.distance_km += dist;
-    totals.elevation_m += elev;
-
-    if (dist >= 120) totals.long_rides_120k++;
-    if (elev >= 2000) totals.rides_over_2000m++;
-    if (dur >= 8 * 3600) totals.long_8h++;
-  }
-
-  return totals;
-}
-
-/**
- * Vérifie si une compétence peut être débloquée :
- * - conditions.xp.*
- * - conditions.totals.*
- * - conditions.single_ride.*
- * - conditions.levels.*
- */
-async function checkSkillAvailable(skill, unlockedIds, userXp, userId) {
-  if (skill.parent_id && !unlockedIds.includes(skill.parent_id)) return false;
-  if (!skill.conditions) return true;
-
-  let cond;
-  try {
-    cond = typeof skill.conditions === 'string'
-      ? JSON.parse(skill.conditions)
-      : skill.conditions;
-  } catch {
-    console.warn("⚠️ JSON invalide pour", skill.name);
-    return false;
-  }
-
-  const global = await fetchGlobalXp(userId);
-  const activities = await fetchUserActivities(userId);
-  const totals = computeUserTotals(activities);
-
-  // --- XP ---
-  if (cond.xp) {
-    if (cond.xp.global && global.total_xp < cond.xp.global) return false;
-    if (cond.xp.endurance && (userXp.endurance || 0) < cond.xp.endurance) return false;
-    if (cond.xp.explosivity && (userXp.explosivity || 0) < cond.xp.explosivity) return false;
-    if (cond.xp.mental && (userXp.mental || 0) < cond.xp.mental) return false;
-    if (cond.xp.strategy && (userXp.strategy || 0) < cond.xp.strategy) return false;
-  }
-
-  // --- Totaux globaux ---
-  if (cond.totals) {
-    for (const [key, value] of Object.entries(cond.totals)) {
-      if ((totals[key] || 0) < value) return false;
-    }
-  }
-
-  // --- Niveaux requis ---
-  if (cond.levels) {
-    if (cond.levels.endurance && computeLevelFromXp(userXp.endurance) < cond.levels.endurance) return false;
-    if (cond.levels.explosivity && computeLevelFromXp(userXp.explosivity) < cond.levels.explosivity) return false;
-    if (cond.levels.mental && computeLevelFromXp(userXp.mental) < cond.levels.mental) return false;
-    if (cond.levels.strategy && computeLevelFromXp(userXp.strategy) < cond.levels.strategy) return false;
-    if (cond.levels.global && global.level < cond.levels.global) return false;
-  }
-
-  // --- Single ride ---
-  if (cond.single_ride) {
-    const found = activities.some(a => {
-      const dist = Number(a.distance) || 0;
-      const elev = Number(a.elevation) || 0;
-      const durH = (Number(a.duration) || 0) / 3600;
-      const okDist = !cond.single_ride.distance_km || dist >= cond.single_ride.distance_km;
-      const okElev = !cond.single_ride.elevation_m || elev >= cond.single_ride.elevation_m;
-      const okDur = !cond.single_ride.duration_h || durH >= cond.single_ride.duration_h;
-      const okPower = !cond.single_ride.peak_power_w || (a.avg_power && a.avg_power >= cond.single_ride.peak_power_w);
-      return okDist && okElev && okDur && okPower;
-    });
-    if (!found) return false;
-  }
-
-  return true;
-}
-
-/* -----------------------------------------------------------
-   💬 Popup + déblocage
------------------------------------------------------------ */
-
-function showSkillPopup(skill, state) {
-  const popup = document.querySelector('[data-skill-popup]');
-  const content = document.querySelector('[data-skill-content]');
+function openMasteryPopup(mastery, level, max, color) {
+  const popup = document.querySelector('[data-mastery-popup]');
+  const content = document.querySelector('[data-mastery-content]');
   const closeBtn = document.querySelector('[data-popup-close]');
   if (!popup || !content) return;
 
-  let cond = {};
-  try {
-    cond = typeof skill.conditions === 'string'
-      ? JSON.parse(skill.conditions)
-      : (skill.conditions || {});
-  } catch {}
-
-  let reward = {};
-  try {
-    reward = typeof skill.reward === 'string'
-      ? JSON.parse(skill.reward)
-      : (skill.reward || {});
-  } catch {}
-
-  // --- construire le texte lisible des conditions ---
-  const condParts = [];
-  if (cond.levels) {
-    for (const [k, v] of Object.entries(cond.levels)) {
-      condParts.push(`Niveau ${v} en ${capitalize(k)}`);
-    }
-  }
-  if (cond.xp) {
-    for (const [k, v] of Object.entries(cond.xp)) {
-      condParts.push(`${v} XP ${capitalize(k)}`);
-    }
-  }
-  if (cond.totals) {
-    if (cond.totals.distance_km)
-      condParts.push(`${cond.totals.distance_km} km cumulés`);
-    if (cond.totals.elevation_m)
-      condParts.push(`${cond.totals.elevation_m} m D+ cumulés`);
-    if (cond.totals.rides)
-      condParts.push(`${cond.totals.rides} sorties`);
-  }
-  if (cond.single_ride) {
-    const parts = [];
-    if (cond.single_ride.distance_km)
-      parts.push(`${cond.single_ride.distance_km} km`);
-    if (cond.single_ride.elevation_m)
-      parts.push(`${cond.single_ride.elevation_m} m D+`);
-    if (cond.single_ride.duration_h)
-      parts.push(`${cond.single_ride.duration_h} h`);
-    condParts.push(`Sur une sortie : ${parts.join(' et ')}`);
-  }
-
-  const rewardParts = [];
-  if (reward.badge?.label) rewardParts.push(`🏅 ${reward.badge.label}`);
-  if (reward.title) rewardParts.push(`🎖️ Titre : ${reward.title}`);
-  if (reward.bonus) {
-    for (const [k, v] of Object.entries(reward.bonus)) {
-      rewardParts.push(`✨ ${k.replace(/_/g, ' ')} : ${v}`);
-    }
-  }
-
   content.innerHTML = `
-    <div class="skill-popup-header">
-      <div class="skill-popup-icon">${skill.icon || '🌿'}</div>
-      <div>
-        <h2>${skill.name}</h2>
-        <p class="skill-type">${capitalize(skill.type)}</p>
-      </div>
-    </div>
-
-    <p class="skill-desc">${skill.description || ''}</p>
-
-    <div class="skill-popup-section">
-      <h3>Conditions</h3>
-      <ul>${condParts.length ? condParts.map(c => `<li>${c}</li>`).join('') : '<li>Aucune</li>'}</ul>
-    </div>
-
-    <div class="skill-popup-section">
-      <h3>Récompenses</h3>
-      <ul>${rewardParts.length ? rewardParts.map(r => `<li>${r}</li>`).join('') : '<li>Aucune</li>'}</ul>
-    </div>
-
-    <div class="skill-popup-footer">
-      <span class="state-label ${state}">
-        ${state === 'unlocked'
-          ? '✅ Compétence débloquée automatiquement'
-          : state === 'available'
-            ? '🌱 Conditions remplies — se débloquera automatiquement'
-            : '🔒 Conditions non remplies'}
-      </span>
-    </div>
+    <h2>${mastery.icon || '⬜'} ${mastery.name}</h2>
+    <p class="skill-type">${capitalize(mastery.category)}</p>
+    <p>${mastery.description || ''}</p>
+    <h3>Niveau actuel</h3>
+    <p>${level} / ${max}</p>
   `;
 
   popup.classList.add('show');
@@ -669,168 +380,155 @@ function showSkillPopup(skill, state) {
   });
 }
 
-
-async function unlockSkill(skillId) {
-  const user = currentUser;
-  if (!user) return;
-  await supabaseClient.from('user_skills_progress').insert({
-    user_id: user.id,
-    skill_id: skillId,
-    unlocked_at: new Date().toISOString()
-  });
-  Veloskill.showToast({
-    type: 'success',
-    title: 'Nouvelle compétence débloquée',
-    message: 'Bravo, tu viens de progresser 🎉'
-  });
-  await initArbre();
-}
-
-/* -----------------------------------------------------------
-   🔁 Mise à jour rétroactive des compétences
------------------------------------------------------------ */
-
-/* -----------------------------------------------------------
-   🔁 Mise à jour rétroactive des compétences (version unifiée)
------------------------------------------------------------ */
-async function updateUnlockedSkillsFromHistory(userId, skills, unlockedIds, userXp) {
-  console.log('🔁 Vérification historique des compétences (user_skills_progress)...');
-  const newlyUnlocked = [];
-
-  const activities = await fetchUserActivities(userId);
-
-  for (const skill of skills) {
-    // Vérifie si déjà marquée "is_met = true"
-    const { data: existing } = await supabaseClient
-      .from('user_skills_progress')
-      .select('is_met')
-      .eq('user_id', userId)
-      .eq('skill_id', skill.id)
-      .maybeSingle();
-
-    const wasMet = existing?.is_met === true;
-
-    // Si déjà validée, ajoute au tableau local
-    if (wasMet) {
-      if (!unlockedIds.includes(skill.id)) unlockedIds.push(skill.id);
-      continue;
-    }
-
-    // Sinon on calcule normalement
-    const canUnlock = await checkSkillAvailable(skill, unlockedIds, userXp, userId);
-
-    // Met à jour le cache
-    await supabaseClient
-      .from('user_skills_progress')
-      .upsert({
-        user_id: userId,
-        skill_id: skill.id,
-        last_checked: new Date().toISOString(),
-        is_met: canUnlock
-      });
-
-    if (canUnlock && !wasMet) {
-      newlyUnlocked.push(skill.id);
-      unlockedIds.push(skill.id);
-
-      Veloskill.showToast({
-        type: 'success',
-        title: `🎉 Nouvelle compétence débloquée`,
-        message: `${skill.name} obtenue grâce à ton historique`
-      });
-    }
-  }
-
-  console.log(`✅ ${newlyUnlocked.length} compétences mises à jour.`);
-  return unlockedIds;
-}
-
-/* -----------------------------------------------------------
-   🧩 Utilitaire
------------------------------------------------------------ */
-function capitalize(str) {
+function capitalize(str = '') {
   return str.charAt(0).toUpperCase() + str.slice(1);
 }
 
-    async function initSkill() {
-    const params = new URLSearchParams(window.location.search);
-    const skillId = params.get('id');
-    if (!skillId) {
-      Veloskill.showToast({
-        type: 'error',
-        title: 'Compétence inconnue',
-        message: 'Identifiant manquant dans l’URL.'
-      });
-      return;
-    }
+function evaluateMasteryLevel(condition, stats) {
+  const c = JSON.parse(condition);
+  const value = stats[c.metric] || 0;
+  if (!Array.isArray(c.thresholds)) return 0;
 
-    const sessionData = await loadSessionAndProfile();
-    const user = sessionData?.user;
-    if (!user) {
-      window.location.href = 'index.html';
-      return;
-    }
+  let level = 0;
+  for (const t of c.thresholds) {
+    if (value >= t) level++;
+  }
+  return Math.min(level, c.thresholds.length);
+}
 
-    const [skill, unlocks] = await Promise.all([
-      fetchSkillById(skillId),
-      fetchUserUnlocks(user.id)
-    ]);
+/* ============================================
+   🎯 MAÎTRISES — Calcul et mise à jour auto
+============================================ */
 
-    if (!skill) {
-      Veloskill.showToast({
-        type: 'error',
-        title: 'Erreur',
-        message: 'Impossible de charger cette compétence.'
-      });
-      return;
-    }
+// Retourne le niveau atteint selon les thresholds JSON
+function evaluateMasteryLevel(condition, stats) {
+  const c = typeof condition === 'string' ? JSON.parse(condition) : condition;
+  if (!c || !Array.isArray(c.thresholds)) return 0;
 
-    const isUnlocked = unlocks.includes(skill.id);
-    const isAvailable = !isUnlocked && checkSkillAvailable(skill, unlocks);
-    const state = isUnlocked
-      ? 'unlocked'
-      : isAvailable
-      ? 'available'
-      : 'locked';
+  const metric = c.metric;
+  const value = stats[metric] || 0;
 
-    renderSkillDetail(skill, state);
+  let level = 0;
+  for (const t of c.thresholds) {
+    if (value >= t) level++;
+  }
+  return Math.min(level, c.thresholds.length);
+}
+
+// Calcule les totaux et records des activités
+function computeActivityStats(activities) {
+  const totals = {
+    distance_km: 0,
+    elevation_m: 0,
+    duration_h: 0,
+    rides: activities.length,
+    avg_power: 0,
+    countries: new Set()
+  };
+
+  let maxDistance = 0;
+  let maxElevation = 0;
+  let maxDuration = 0;
+  let maxPower = 0;
+
+  for (const a of activities) {
+    const dist = Number(a.distance || 0);
+    const elev = Number(a.elevation || 0);
+    const dur = Number(a.duration || 0) / 3600; // secondes → heures
+    const pow = Number(a.avg_power || 0);
+
+    totals.distance_km += dist;
+    totals.elevation_m += elev;
+    totals.duration_h += dur;
+
+    if (dist > maxDistance) maxDistance = dist;
+    if (elev > maxElevation) maxElevation = elev;
+    if (dur > maxDuration) maxDuration = dur;
+    if (pow > maxPower) maxPower = pow;
+
+    if (a.country) totals.countries.add(a.country);
   }
 
-  function renderSkillDetail(skill, state) {
-    const container = document.querySelector('[data-skill-container]');
-    if (!container) return;
+  return {
+    ...totals,
+    distance_km_max: maxDistance,
+    elevation_m_max: maxElevation,
+    duration_h_max: maxDuration,
+    avg_power_max: maxPower,
+    countries_count: totals.countries.size
+  };
+}
 
-    const conditionText = skill.conditions
-      ? JSON.stringify(skill.conditions, null, 2)
-      : 'Aucune condition définie.';
-    const rewardText = skill.reward
-      ? JSON.stringify(skill.reward, null, 2)
-      : 'Aucune récompense.';
+// Évalue une condition (total, single_ride, geo, etc.)
+function evaluateCondition(cond, stats) {
+  const c = typeof cond === 'string' ? JSON.parse(cond) : cond;
+  if (!c) return 0;
 
-    container.innerHTML = `
-      <h2>${skill.name}</h2>
-      <div class="skill-type">${skill.type}</div>
-      <p class="skill-desc">${skill.description || ''}</p>
+  let metricValue = 0;
 
-      <div class="skill-section">
-        <h3>Conditions</h3>
-        <pre>${conditionText}</pre>
-      </div>
-
-      <div class="skill-section">
-        <h3>Récompense</h3>
-        <pre>${rewardText}</pre>
-      </div>
-
-      <div class="skill-state ${state}">
-        ${state === 'unlocked'
-          ? 'Débloquée 🌟'
-          : state === 'available'
-          ? 'Atteignable 🌱'
-          : 'Verrouillée 🔒'}
-      </div>
-    `;
+  switch (c.type) {
+    case 'total':
+      metricValue = stats[c.metric] || 0;
+      break;
+    case 'single_ride':
+      metricValue = stats[c.metric + '_max'] || 0;
+      break;
+    case 'count':
+      metricValue = stats.rides || 0;
+      break;
+    case 'geo':
+      metricValue = stats.countries_count || 0;
+      break;
+    case 'record':
+      metricValue = stats[c.metric + '_max'] || 0;
+      break;
+    default:
+      return 0;
   }
+
+  return evaluateMasteryLevel({ ...c, metric: c.metric }, { [c.metric]: metricValue });
+}
+
+// Fonction principale — met à jour user_masteries automatiquement
+async function updateUserMasteries(userId) {
+  try {
+    // Récupère toutes les activités utilisateur
+    const { data: activities, error: actErr } = await supabaseClient
+      .from('activities')
+      .select('*')
+      .eq('user_id', userId);
+
+    if (actErr) throw actErr;
+
+    const stats = computeActivityStats(activities);
+
+    // Récupère toutes les maîtrises
+    const { data: masteries, error: mErr } = await supabaseClient
+      .from('masteries')
+      .select('*');
+
+    if (mErr) throw mErr;
+
+    for (const mastery of masteries) {
+      const cond = mastery.condition;
+      const level = evaluateCondition(cond, stats);
+
+      if (level > 0) {
+        await supabaseClient.from('user_masteries').upsert({
+          user_id: userId,
+          mastery_id: mastery.id,
+          level,
+          unlocked_at: new Date().toISOString()
+        });
+      }
+    }
+
+    console.log('✅ Mise à jour des maîtrises terminée pour', userId);
+  } catch (err) {
+    console.error('Erreur updateUserMasteries:', err);
+  }
+}
+
 
   /* --------------------- CALCUL XP DYNAMIQUE --------------------- */
   // Calcule les 4 jauges à partir des activités Strava de l'utilisateur
@@ -1113,6 +811,8 @@ function capitalize(str) {
           message: `+${Math.round(updatedXp.endurance)} XP Endurance · +${Math.round(updatedXp.explosivity)} XP Explosivité`
         });
 
+        await updateUserMasteries(user.id);
+
         // 3️⃣ Nettoie l’URL
         window.history.replaceState({}, document.title, window.location.pathname);
       } catch (err) {
@@ -1174,9 +874,14 @@ function capitalize(str) {
     // Export JSON
     exportBtn.addEventListener('click', async () => {
       try {
-        const xp = await fetchUserXp(user.id);
-        const unlocks = await fetchUserUnlocks(user.id);
-        const data = { profile, xp, unlocks };
+        const xp = await getOrComputeUserXp(user.id);
+
+        const { data: masteries } = await supabaseClient
+          .from('user_masteries')
+          .select('mastery_id, level')
+          .eq('user_id', user.id);
+
+        const data = { profile, xp, masteries: masteries || [] };
 
         const blob = new Blob([JSON.stringify(data, null, 2)], { type: 'application/json' });
         const url = URL.createObjectURL(blob);
@@ -1875,11 +1580,8 @@ function capitalize(str) {
       case 'dashboard':
         await initDashboard();
         break;
-      case 'arbre':
-        await initArbre();
-        break;
-      case 'skill':
-        await initSkill();
+      case 'masteries':
+        await initMasteries();
         break;
       case 'boss':
         await initBoss();
