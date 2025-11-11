@@ -401,30 +401,56 @@ const Veloskill = (() => {
     const sessionData = await loadSessionAndProfile();
     const user = sessionData?.user;
     const profile = sessionData?.profile;
-    // Si retour Strava avec code=...
+
+    if (!user) {
+      window.location.href = 'index.html';
+      return;
+    }
+
+    // 1️⃣ Si retour Strava avec ?code=...
     const params = new URLSearchParams(window.location.search);
     const stravaCode = params.get('code');
+
     if (stravaCode) {
       try {
-        await exchangeStravaCodeForTokens(user.id, stravaCode);
+        const res = await fetch(`/api/strava-token?code=${encodeURIComponent(stravaCode)}`);
+        const data = await res.json();
+
+        if (!res.ok) {
+          throw new Error(data.error || 'Erreur Strava');
+        }
+
+        const { access_token, refresh_token, expires_at, athlete } = data;
+
+        // 2️⃣ Sauvegarde des tokens en base
+        const { error } = await supabaseClient
+          .from('strava_tokens')
+          .upsert({
+            user_id: user.id,
+            access_token,
+            refresh_token,
+            expires_at,
+            athlete_id: athlete?.id || null
+          });
+
+        if (error) throw error;
+
         Veloskill.showToast({
           type: 'success',
           title: 'Strava connecté',
           message: 'Tes sorties vont être synchronisées automatiquement.'
         });
+
+        // 3️⃣ Nettoie l’URL
         window.history.replaceState({}, document.title, window.location.pathname);
       } catch (err) {
+        console.error(err);
         Veloskill.showToast({
           type: 'error',
           title: 'Erreur Strava',
           message: 'Impossible de finaliser la connexion.'
         });
       }
-    }
-
-    if (!user) {
-      window.location.href = 'index.html';
-      return;
     }
 
     const form = document.querySelector('[data-profile-form]');
@@ -518,10 +544,18 @@ const Veloskill = (() => {
 
     // Lancer OAuth Strava
     stravaBtn.addEventListener('click', () => {
-      const clientId = STRAVA_CLIENT_ID;
-      const redirectUri = encodeURIComponent('https://https://veloskill.vercel.app/profile.html');
+      const clientId = STRAVA_CLIENT_ID; // défini globalement dans profile.html, ou remplace par ton ID numérique
+      const redirectUri = encodeURIComponent(`${window.location.origin}/profile.html`);
       const scope = encodeURIComponent('read,activity:read_all');
-      const url = `https://www.strava.com/oauth/authorize?client_id=${clientId}&response_type=code&redirect_uri=${redirectUri}&approval_prompt=auto&scope=${scope}`;
+
+      const url =
+        `https://www.strava.com/oauth/authorize` +
+        `?client_id=${clientId}` +
+        `&response_type=code` +
+        `&redirect_uri=${redirectUri}` +
+        `&approval_prompt=auto` +
+        `&scope=${scope}`;
+
       window.location.href = url;
     });
 
