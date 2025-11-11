@@ -149,6 +149,10 @@ const Veloskill = (() => {
         strategy: 300
       });
       renderDashboardBossPreview();
+      renderGlobalXpCard({
+        total_xp: 4200,
+        level: computeGlobalLevel(4200)
+      });
       showToast({
         type: 'info',
         title: 'Mode démo',
@@ -165,6 +169,11 @@ const Veloskill = (() => {
 
     const xp = await getOrComputeUserXp(user.id);
     renderDashboardXp(xp);
+
+    // 🔍 Récupère et affiche le niveau global
+    const globalXp = await fetchGlobalXp(user.id);
+    renderGlobalXpCard(globalXp);
+
     renderDashboardBossPreview();
 
     const syncBtn = document.getElementById('sync-strava-btn');
@@ -455,8 +464,87 @@ const Veloskill = (() => {
         last_update: new Date().toISOString()
       });
 
+    // 🔁 Mise à jour du niveau global
+    await updateGlobalXpAndLevel(userId, xp, activities.length);
+    
     return xp;
   }
+
+  /* --------------------- NIVEAU GLOBAL --------------------- */
+  async function updateGlobalXpAndLevel(userId, xp, activitiesCount = 0) {
+    // Base XP : chaque sortie rapporte un peu d'XP global
+    const baseXpFromActivities = activitiesCount * 10; // 10 xp par sortie
+    // Fraction des jauges (20 % du total)
+    const jaugeContribution = (xp.endurance + xp.explosivity + xp.mental + xp.strategy) * 0.2;
+    const gainedXp = Math.round(baseXpFromActivities + jaugeContribution);
+
+    // Récupérer l’ancien total pour cumuler
+    const { data: existing, error } = await supabaseClient
+      .from('global_xp')
+      .select('total_xp')
+      .eq('user_id', userId)
+      .maybeSingle();
+
+    const oldTotal = existing?.total_xp || 0;
+    const newTotal = oldTotal + gainedXp;
+    const newLevel = computeGlobalLevel(newTotal);
+
+    // Sauvegarde
+    await supabaseClient
+      .from('global_xp')
+      .upsert({
+        user_id: userId,
+        total_xp: newTotal,
+        level: newLevel,
+        last_update: new Date().toISOString()
+      });
+
+    console.log(`→ XP global +${gainedXp} (${newTotal} total, niveau ${newLevel})`);
+    return { gainedXp, totalXp: newTotal, level: newLevel };
+  }
+
+  function computeGlobalLevel(totalXp) {
+    // Progression non linéaire (façon RPG)
+    return Math.floor(1 + Math.pow(totalXp / 100, 0.5));
+  }
+
+    async function fetchGlobalXp(userId) {
+    const { data, error } = await supabaseClient
+      .from('global_xp')
+      .select('total_xp, level')
+      .eq('user_id', userId)
+      .maybeSingle();
+
+    if (error || !data) {
+      return { total_xp: 0, level: 1 };
+    }
+
+    return {
+      total_xp: data.total_xp || 0,
+      level: data.level || computeGlobalLevel(data.total_xp || 0)
+    };
+  }
+
+  function renderGlobalXpCard(globalXp) {
+    const container = document.querySelector('[data-xp-grid]');
+    if (!container) return;
+
+    const card = document.createElement('div');
+    card.className = 'xp-card xp-global';
+    card.innerHTML = `
+      <div class="xp-header">
+        <div>🌍 Niveau global</div>
+        <div>Niv. ${globalXp.level}</div>
+      </div>
+      <div class="xp-value">${globalXp.total_xp} XP</div>
+      <div class="xp-next">
+        Chaque sortie, badge & boss contribueront à ce niveau général.
+      </div>
+    `;
+    // tu peux utiliser prepend() pour l'afficher en premier, ou appendChild() pour le mettre à la fin
+    container.prepend(card);
+  }
+
 
   /* --------------------- RÉCUPÉRATION XP UTILISATEUR --------------------- */
   async function getOrComputeUserXp(userId) {
