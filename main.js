@@ -659,21 +659,33 @@ async function updateUserMasteries(userId) {
 
   /* --------------------- NIVEAU GLOBAL --------------------- */
   async function updateGlobalXpAndLevel(userId, xp, activitiesCount = 0) {
-    // Base XP : chaque sortie rapporte un peu d'XP global
-    const baseXpFromActivities = activitiesCount * 10; // 10 xp par sortie
-    // Fraction des jauges (20 % du total)
-    const jaugeContribution = (xp.endurance + xp.explosivity + xp.mental + xp.strategy) * 0.2;
-    const gainedXp = Math.round(baseXpFromActivities + jaugeContribution);
-
-    // Récupérer l’ancien total pour cumuler
-    const { data: existing, error } = await supabaseClient
+    // 1️⃣ On récupère l'ancien état global
+    const { data: existing } = await supabaseClient
       .from('global_xp')
-      .select('total_xp')
+      .select('total_xp, last_update')
       .eq('user_id', userId)
       .maybeSingle();
 
     const oldTotal = existing?.total_xp || 0;
     const oldLevel = existing?.level || 1;
+
+    // 2️⃣ Vérifie la dernière mise à jour
+    const lastUpdate = existing?.last_update ? new Date(existing.last_update) : null;
+    const now = new Date();
+    const diffMinutes = lastUpdate ? (now - lastUpdate) / 60000 : Infinity;
+
+    // 🔸 Si le dernier calcul date de moins de 30 min, on ne redonne pas d’XP global
+    if (diffMinutes < 30) {
+      console.log("↩️ Pas de recalcul XP global (trop récent)");
+      return { gainedXp: 0, totalXp: oldTotal, level: oldLevel };
+    }
+
+    // 3️⃣ Calcule la progression réelle
+    const baseXpFromActivities = activitiesCount * 10;
+    const jaugeContribution = (xp.endurance + xp.explosivity + xp.mental + xp.strategy) * 0.2;
+    const gainedXp = Math.round(baseXpFromActivities + jaugeContribution);
+
+    // 4️⃣ Nouveau total et niveau
     const newTotal = oldTotal + gainedXp;
     const newLevel = computeGlobalLevel(newTotal);
 
@@ -683,12 +695,10 @@ async function updateUserMasteries(userId) {
         user_id: userId,
         total_xp: newTotal,
         level: newLevel,
-        last_update: new Date().toISOString()
+        last_update: now.toISOString()
       });
 
-    console.log(`→ XP global +${gainedXp} (${newTotal} total, niveau ${newLevel})`);
-
-    // 🔔 Notification automatique
+    // 🔔 Notification si level-up
     if (newLevel > oldLevel) {
       Veloskill.showToast({
         type: 'success',
@@ -697,6 +707,7 @@ async function updateUserMasteries(userId) {
       });
     }
 
+    console.log(`→ XP global +${gainedXp} (${newTotal} total, niveau ${newLevel})`);
     return { gainedXp, totalXp: newTotal, level: newLevel };
   }
 
