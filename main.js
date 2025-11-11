@@ -291,9 +291,9 @@ function renderArbreOverview(trees, unlockedIds, xp, userId) {
   const btnRetour = document.querySelector('[data-btn-retour]');
 
   overview.innerHTML = '';
-  container.hidden = true;
-  btnRetour.hidden = true;
-  overview.hidden = false;
+  overview.classList.add('view--active');
+  container.classList.remove('view--active');
+  btnRetour.classList.remove('is-visible');
 
   const colors = {
     endurance: '#42c779',
@@ -317,17 +317,21 @@ function renderArbreOverview(trees, unlockedIds, xp, userId) {
 
     const block = document.createElement('div');
     block.className = `arbre-block ${type}`;
-    block.style.color = colors[type];
+    block.style.setProperty('--color', colors[type]);
     block.innerHTML = `
-      <div class="icon">${icons[type]}</div>
-      <div class="title">${capitalize(type)}</div>
-      <div class="progress">${unlockedCount}/${total} débloquées</div>
+      <div class="arbre-block-bg"></div>
+      <div class="arbre-block-content">
+        <div class="icon">${icons[type]}</div>
+        <div class="title">${capitalize(type)}</div>
+        <div class="progress">${unlockedCount}/${total} débloquées</div>
+      </div>
     `;
 
     block.addEventListener('click', async () => {
-      overview.hidden = true;
-      container.hidden = false;
-      btnRetour.hidden = false;
+      overview.classList.remove('view--active');
+      container.classList.add('view--active');
+      btnRetour.classList.add('is-visible');
+      container.innerHTML = ''; // reset avant affichage
       await renderSkillTreeRecursive(list, unlockedIds, colors[type], xp, userId, null, 1);
     });
 
@@ -335,9 +339,9 @@ function renderArbreOverview(trees, unlockedIds, xp, userId) {
   }
 
   btnRetour.addEventListener('click', () => {
-    container.innerHTML = '';
-    overview.hidden = false;
-    btnRetour.hidden = true;
+    container.classList.remove('view--active');
+    overview.classList.add('view--active');
+    btnRetour.classList.remove('is-visible');
   });
 }
 

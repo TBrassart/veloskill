@@ -1086,54 +1086,225 @@ header {
   opacity: 0.4;
 }
 
-/* === Vue globale des 5 arbres === */
+/* === Vue globale (desktop) === */
 .arbre-overview {
-  display: flex;
-  flex-wrap: wrap;
-  justify-content: center;
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(320px, 1fr));
+  grid-auto-rows: 80vh;
   gap: 2rem;
-  padding: 2rem;
+  padding: 3rem;
+  justify-items: center;
+  align-items: center;
+  transition: opacity 0.35s ease, transform 0.35s ease;
 }
 
+/* === Bloc principal === */
 .arbre-block {
-  width: 220px;
-  height: 160px;
-  border-radius: 16px;
-  background: #1a1a1a;
-  display: flex;
-  flex-direction: column;
-  justify-content: center;
-  align-items: center;
+  position: relative;
+  width: 100%;
+  height: 100%;
+  border-radius: 20px;
+  overflow: hidden;
+  color: #fff;
   cursor: pointer;
-  transition: all 0.3s ease;
-  box-shadow: 0 0 10px rgba(0,0,0,0.4);
+  transition: transform 0.4s ease, box-shadow 0.4s ease;
+  box-shadow: 0 0 40px var(--color, #42c779);
+  backdrop-filter: blur(8px);
 }
 
 .arbre-block:hover {
-  transform: scale(1.05);
-  box-shadow: 0 0 16px currentColor;
+  transform: scale(1.03);
+  box-shadow: 0 0 60px var(--color, #42c779);
+}
+
+/* === Fond flouté + halo === */
+.arbre-block-bg {
+  position: absolute;
+  inset: 0;
+  background-image: var(--bg-url, url('images/default.jpg'));
+  background-size: cover;
+  background-position: center;
+  filter: blur(6px) brightness(0.6);
+  opacity: 0.9;
+  transition: filter 0.3s ease, opacity 0.3s ease;
+}
+
+.arbre-block:hover .arbre-block-bg {
+  filter: blur(3px) brightness(0.8);
+  opacity: 1;
+}
+
+/* Halo externe coloré */
+.arbre-block::before {
+  content: '';
+  position: absolute;
+  inset: -3px;
+  border-radius: 22px;
+  background: var(--color);
+  filter: blur(24px);
+  opacity: 0.6;
+  z-index: 0;
+}
+
+/* === Contenu texte / icône === */
+.arbre-block-content {
+  position: relative;
+  z-index: 2;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  height: 100%;
+  text-align: center;
+  gap: 0.5rem;
+  padding: 1rem;
+  background: rgba(0, 0, 0, 0.35);
+  border-radius: 20px;
 }
 
 .arbre-block .icon {
-  font-size: 2.4rem;
-  margin-bottom: 0.6rem;
+  font-size: 4rem;
+  margin-bottom: 1rem;
 }
 
 .arbre-block .title {
-  font-weight: 600;
+  font-size: 1.8rem;
+  font-weight: 700;
   text-transform: capitalize;
+  text-shadow: 0 0 10px rgba(0,0,0,0.5);
 }
 
 .arbre-block .progress {
-  font-size: 0.9rem;
-  opacity: 0.8;
+  font-size: 1rem;
+  opacity: 0.9;
 }
 
-.arbre-block.endurance { color: #42c779; }
-.arbre-block.explosivity { color: #f04a4a; }
-.arbre-block.mental { color: #5b74ff; }
-.arbre-block.strategy { color: #f2b01e; }
-.arbre-block.special { color: #9a5df5; }
+/* === Couleurs & fonds personnalisés === */
+.arbre-block.endurance { --color: #42c779; --bg-url: url('images/endurance.jpg'); }
+.arbre-block.explosivity { --color: #f04a4a; --bg-url: url('images/explosivity.jpg'); }
+.arbre-block.mental { --color: #5b74ff; --bg-url: url('images/mental.jpg'); }
+.arbre-block.strategy { --color: #f2b01e; --bg-url: url('images/strategy.jpg'); }
+.arbre-block.special { --color: #9a5df5; --bg-url: url('images/special.jpg'); }
+
+/* === Transitions entre vues === */
+.view {
+  opacity: 0;
+  transform: translateY(12px);
+  pointer-events: none;
+  transition: opacity 0.35s ease, transform 0.35s ease;
+}
+
+.view.view--active {
+  opacity: 1;
+  transform: translateY(0);
+  pointer-events: auto;
+}
+
+/* === Bouton retour === */
+.btn-retour {
+  position: fixed;
+  top: 88px;
+  left: 32px;
+  padding: 0.5rem 1rem;
+  border-radius: 8px;
+  border: 1px solid #444;
+  background: rgba(10,10,10,0.96);
+  color: #f5f5f5;
+  font-size: 0.9rem;
+  cursor: pointer;
+  display: none;
+  align-items: center;
+  gap: 0.4rem;
+  z-index: 40;
+  box-shadow: 0 4px 12px rgba(0,0,0,0.6);
+  transition: opacity 0.25s ease, transform 0.25s ease, background 0.2s ease;
+}
+
+.btn-retour.is-visible {
+  display: inline-flex;
+  opacity: 1;
+  transform: translateY(0);
+}
+
+.btn-retour:hover {
+  background: #222;
+  transform: translateY(-1px);
+}
+
+/* === Popup compétence (visuel doux) === */
+.skill-popup {
+  position: fixed;
+  inset: 0;
+  background: rgba(0,0,0,0.7);
+  display: none;
+  align-items: center;
+  justify-content: center;
+  z-index: 100;
+}
+
+.skill-popup.show {
+  display: flex;
+  animation: fadeInPopup 0.25s ease-out;
+}
+
+@keyframes fadeInPopup {
+  from { opacity: 0; transform: translateY(10px); }
+  to   { opacity: 1; transform: translateY(0); }
+}
+
+/* === 🪶 Responsive Design === */
+
+/* Tablettes */
+@media (max-width: 1024px) {
+  .arbre-overview {
+    grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
+    grid-auto-rows: 60vh;
+    padding: 2rem;
+    gap: 1.5rem;
+  }
+
+  .arbre-block .icon {
+    font-size: 3rem;
+  }
+
+  .arbre-block .title {
+    font-size: 1.4rem;
+  }
+}
+
+/* Mobiles */
+@media (max-width: 700px) {
+  .arbre-overview {
+    display: flex;
+    flex-direction: column;
+    gap: 1.5rem;
+    padding: 1.5rem;
+  }
+
+  .arbre-block {
+    width: 100%;
+    height: 60vh;
+    border-radius: 16px;
+    box-shadow: 0 0 25px var(--color);
+  }
+
+  .arbre-block-content {
+    padding: 1.2rem;
+    background: rgba(0,0,0,0.45);
+  }
+
+  .arbre-block .icon {
+    font-size: 2.6rem;
+  }
+
+  .arbre-block .title {
+    font-size: 1.3rem;
+  }
+
+  .arbre-block .progress {
+    font-size: 0.9rem;
+  }
+}
 
 .btn-retour {
   position: fixed;
