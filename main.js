@@ -1672,12 +1672,39 @@ async function getStravaToken() {
 
 // Fonction principale : synchroniser les activités
 async function syncStravaActivities(user) {
-  const token = await getStravaToken();
+  // 1️⃣ Essaie d'abord de lire le token dans localStorage
+  let token = await getStravaToken();
+
+  // 2️⃣ Si absent, tente de le récupérer depuis Supabase
   if (!token) {
-    console.warn("⛔ Aucun token Strava trouvé, utilisateur non connecté à Strava.");
-    return;
+    console.warn("🔎 Token non trouvé dans localStorage, lecture depuis Supabase...");
+
+    const { data, error } = await supabaseClient
+      .from('strava_tokens')
+      .select('access_token')
+      .eq('user_id', user.id)
+      .maybeSingle();
+
+    if (error) {
+      console.error("Erreur lecture strava_tokens:", error);
+    }
+
+    if (data?.access_token) {
+      token = data.access_token;
+      localStorage.setItem("strava_access_token", token);
+      console.log("✅ Token récupéré depuis Supabase et sauvegardé localement.");
+    } else {
+      console.error("⛔ Aucun token Strava trouvé dans Supabase pour cet utilisateur.");
+      Veloskill.showToast({
+        type: 'error',
+        title: 'Connexion Strava requise',
+        message: 'Aucun token Strava trouvé. Reconnecte ton compte dans ton profil.'
+      });
+      return;
+    }
   }
 
+  // 3️⃣ Si on a un token valide → poursuivre la synchronisation
   console.log("🔄 Synchronisation Strava en cours...");
 
   // 2️⃣ Récupération de toutes les activités de l’utilisateur
