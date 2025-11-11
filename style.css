@@ -1088,28 +1088,29 @@ header {
 
 /* === Vue globale (desktop) === */
 .arbre-overview {
-  display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(320px, 1fr));
-  grid-auto-rows: 80vh;
+  display: flex;
+  justify-content: center;
+  align-items: stretch;
   gap: 2rem;
-  padding: 3rem;
-  justify-items: center;
-  align-items: center;
-  transition: opacity 0.35s ease, transform 0.35s ease;
+  padding: 2rem 3rem;
+  height: calc(100vh - 150px); /* pleine hauteur avec marge */
+  box-sizing: border-box;
 }
 
-/* === Bloc principal === */
 .arbre-block {
-  position: relative;
-  width: 100%;
+  flex: 1 1 18%;
+  max-width: 20%;
   height: 100%;
   border-radius: 20px;
   overflow: hidden;
   color: #fff;
   cursor: pointer;
+  position: relative;
   transition: transform 0.4s ease, box-shadow 0.4s ease;
-  box-shadow: 0 0 40px var(--color, #42c779);
-  backdrop-filter: blur(8px);
+  box-shadow: 0 0 25px var(--color);
+  display: flex;
+  align-items: center;
+  justify-content: center;
 }
 
 .arbre-block:hover {
@@ -1329,3 +1330,30 @@ header {
 .btn-retour:hover {
   background: #333;
 }
+
+/* --- Arbre détaillé (vue après clic sur un bloc) --- */
+[data-arbre-container] {
+  width: 100%;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: flex-start;
+  min-height: 80vh;
+  padding: 2rem 0;
+  margin: 0 auto;
+  transition: opacity 0.35s ease, transform 0.35s ease;
+}
+
+[data-arbre-container].view--active {
+  opacity: 1;
+  transform: translateY(0);
+}
+
+.skill-layer {
+  display: flex;
+  justify-content: center;
+  align-items: flex-start;
+  gap: 3rem;
+  margin-top: 2rem;
+}
+

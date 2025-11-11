@@ -339,6 +339,8 @@ function renderArbreOverview(trees, unlockedIds, xp, userId) {
       // On construit l’arbre complet et on l’insère dans le container
       const tree = await renderSkillTreeRecursive(list, unlockedIds, colors[type], xp, userId, null, 1);
       if (tree) container.appendChild(tree);
+
+      window.scrollTo({ top: 0, behavior: 'smooth' });
     });
 
     overview.appendChild(block);
