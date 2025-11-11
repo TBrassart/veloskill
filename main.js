@@ -281,7 +281,7 @@ async function initMasteries() {
 
   // Met à jour les niveaux automatiquement avant affichage
   await updateUserMasteries(user.id);
-  
+
   const [masteries, userLevels] = await Promise.all([
     fetchMasteries(),
     fetchUserMasteries(user.id)
@@ -322,7 +322,6 @@ function renderMasteries(masteries, userLevels) {
   const grids = document.querySelectorAll('[data-mastery-grid]');
   if (!grids.length) return;
 
-  // Nettoie
   grids.forEach(g => (g.innerHTML = ''));
 
   const colors = {
@@ -333,17 +332,34 @@ function renderMasteries(masteries, userLevels) {
     special: '#9a5df5'
   };
 
-  masteries.forEach(m => {
+  for (const m of masteries) {
     const grid = document.querySelector(`[data-mastery-grid="${m.category}"]`);
-    if (!grid) return;
+    if (!grid) continue;
 
     const level = userLevels[m.id] || 0;
     const max = m.max_level || 5;
-    const pct = Math.max(0, Math.min(100, (level / max) * 100));
+    const cond = JSON.parse(m.condition || '{}');
+    const thresholds = cond.thresholds || [];
+
+    // Valeur actuelle & prochain seuil
+    const current = level > 0 ? thresholds[level - 1] : 0;
+    const next = thresholds[level] || null;
+    const pct = Math.min(100, (level / max) * 100);
 
     const card = document.createElement('div');
     card.className = 'mastery-card';
     card.style.setProperty('--color', colors[m.category] || '#42c779');
+
+    // Texte de progression
+    let progressText = '';
+    if (level >= max) {
+      progressText = `✅ Maîtrise complète`;
+    } else if (next) {
+      progressText = `Prochain niveau : ${next.toLocaleString()} ${cond.metric.replace('_', ' ')} (actuel : ${current.toLocaleString()})`;
+    } else {
+      progressText = `Aucun seuil défini`;
+    }
+
     card.innerHTML = `
       <div class="mastery-icon">${m.icon || '⬜'}</div>
       <div class="mastery-name">${m.name}</div>
@@ -351,12 +367,12 @@ function renderMasteries(masteries, userLevels) {
         <div class="mastery-level-bar" style="width:${pct}%"></div>
       </div>
       <div class="mastery-level-text">Niveau ${level}/${max}</div>
+      <div class="mastery-next">${progressText}</div>
     `;
 
     card.addEventListener('click', () => openMasteryPopup(m, level, max, colors[m.category]));
-
     grid.appendChild(card);
-  });
+  }
 }
 
 function openMasteryPopup(mastery, level, max, color) {
@@ -365,12 +381,50 @@ function openMasteryPopup(mastery, level, max, color) {
   const closeBtn = document.querySelector('[data-popup-close]');
   if (!popup || !content) return;
 
+  const cond = JSON.parse(mastery.condition || '{}');
+  const thresholds = cond.thresholds || [];
+  const metricName = cond.metric ? cond.metric.replace('_', ' ') : 'valeur';
+  const next = thresholds[level] || null;
+  const current = thresholds[level - 1] || 0;
+  const pct = Math.min(100, (level / (mastery.max_level || thresholds.length || 1)) * 100);
+
+  // Texte de progression
+  let progressText = '';
+  if (level >= (mastery.max_level || thresholds.length)) {
+    progressText = `✅ Maîtrise complète — tu as atteint le dernier niveau.`;
+  } else if (next) {
+    progressText = `Prochain palier : <strong>${next.toLocaleString()} ${metricName}</strong>`;
+  } else {
+    progressText = `Aucun seuil défini pour cette maîtrise.`;
+  }
+
+  // Liste des seuils
+  let list = '';
+  if (thresholds.length) {
+    list = `
+      <ul class="mastery-thresholds">
+        ${thresholds
+          .map((t, i) => {
+            const reached = i < level ? '✅' : '⬜';
+            return `<li>${reached} ${t.toLocaleString()} ${metricName}</li>`;
+          })
+          .join('')}
+      </ul>`;
+  }
+
   content.innerHTML = `
-    <h2>${mastery.icon || '⬜'} ${mastery.name}</h2>
-    <p class="skill-type">${capitalize(mastery.category)}</p>
+    <h2 style="color:${color}">${mastery.icon || '⬜'} ${mastery.name}</h2>
+    <p class="mastery-category">${capitalize(mastery.category)}</p>
     <p>${mastery.description || ''}</p>
-    <h3>Niveau actuel</h3>
-    <p>${level} / ${max}</p>
+
+    <div class="mastery-progress-popup">
+      <div class="mastery-progress-bar">
+        <div class="mastery-progress-fill" style="width:${pct}%;background:${color};"></div>
+      </div>
+      <div class="mastery-progress-text">Niveau ${level}/${mastery.max_level || thresholds.length}</div>
+      <div class="mastery-progress-next">${progressText}</div>
+      ${list}
+    </div>
   `;
 
   popup.classList.add('show');
@@ -379,6 +433,7 @@ function openMasteryPopup(mastery, level, max, color) {
     if (e.target === popup) popup.classList.remove('show');
   });
 }
+
 
 function capitalize(str = '') {
   return str.charAt(0).toUpperCase() + str.slice(1);
