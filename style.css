@@ -660,8 +660,8 @@ body.light-theme input {
 
 /* === Avatar + menu utilisateur === */
 .avatar-wrapper {
-  cursor: pointer;
   position: relative;
+  display: inline-block;
 }
 
 .avatar {
@@ -684,7 +684,7 @@ body.light-theme input {
 /* Dropdown utilisateur */
 .avatar-dropdown {
   position: absolute;
-  top: 48px;
+  top: 42px; /* ⚙️ réduit l’espace entre l’avatar et le menu */
   right: 0;
   background: #1e1e1e;
   border-radius: 12px;
@@ -695,14 +695,16 @@ body.light-theme input {
   gap: 0.5rem;
   width: 180px;
   z-index: 999;
-  pointer-events: auto;
-  transition: opacity 0.15s ease-in-out;
+  transition: opacity 0.15s ease-in-out, transform 0.15s ease-in-out;
+  opacity: 0;
+  transform: translateY(-4px);
 }
 
 .avatar-wrapper:hover .avatar-dropdown,
 .avatar-dropdown:hover {
   display: flex;
   opacity: 1;
+  transform: translateY(0);
 }
 
 .avatar-name {
