@@ -264,55 +264,183 @@ const Veloskill = (() => {
     }
   }
 
-  async function initArbre() {
-    const sessionData = await loadSessionAndProfile();
-    const user = sessionData?.user;
+  /* ===========================================================
+   🌳 MODULE COMPÉTENCES – NOUVEL ARBRE VISUEL
+   =========================================================== */
 
-    if (!user) {
-      window.location.href = 'index.html';
-      return;
+async function initArbre() {
+  const sessionData = await loadSessionAndProfile();
+  const user = sessionData?.user;
+  if (!user) return (window.location.href = 'index.html');
+
+  const [skills, unlocks, xp] = await Promise.all([
+    fetchAllSkills(),
+    fetchUserUnlocks(user.id),
+    getOrComputeUserXp(user.id)
+  ]);
+
+  const trees = buildSkillTrees(skills);
+  renderSkillTrees(trees, unlocks, xp);
+}
+
+/** Construit 5 arbres distincts à partir du champ "type" */
+function buildSkillTrees(skills) {
+  const groups = {
+    endurance: [],
+    explosivity: [],
+    mental: [],
+    strategy: [],
+    special: []
+  };
+
+  for (const s of skills) {
+    const key = s.type?.toLowerCase() || 'special';
+    if (!groups[key]) groups[key] = [];
+    groups[key].push(s);
+  }
+
+  // Classement par profondeur (optionnel)
+  for (const key in groups) {
+    groups[key].sort((a, b) => (a.depth || 1) - (b.depth || 1));
+  }
+
+  return groups;
+}
+
+/** Rendu principal : 5 colonnes côte à côte */
+function renderSkillTrees(trees, unlockedIds, xp) {
+  const container = document.querySelector('[data-arbre-container]');
+  if (!container) return;
+  container.innerHTML = '';
+
+  const colors = {
+    endurance: '#42c779',
+    explosivity: '#f04a4a',
+    mental: '#5b74ff',
+    strategy: '#f2b01e',
+    special: '#9a5df5'
+  };
+
+  Object.entries(trees).forEach(([type, list]) => {
+    const column = document.createElement('div');
+    column.className = `skill-tree ${type}`;
+    column.style.color = colors[type];
+    column.innerHTML = `<h3 class="skill-tree-title">${capitalize(type)}</h3>`;
+    column.appendChild(renderSkillColumn(list, unlockedIds, colors[type], xp));
+    container.appendChild(column);
+  });
+}
+
+/** Génère les nœuds reliés verticalement */
+function renderSkillColumn(skills, unlockedIds, color, xp) {
+  const col = document.createElement('div');
+  col.className = 'skill-column';
+
+  skills.forEach((skill, i) => {
+    const node = document.createElement('div');
+    const isUnlocked = unlockedIds.includes(skill.id);
+    const isAvailable = !isUnlocked && checkSkillAvailable(skill, unlockedIds, xp);
+    const state = isUnlocked ? 'unlocked' : isAvailable ? 'available' : 'locked';
+
+    node.className = `skill-node ${state}`;
+    node.style.borderColor = color;
+    node.innerHTML = `<span>${skill.icon || '🌿'}</span>`;
+    node.addEventListener('click', () => showSkillPopup(skill, state));
+    col.appendChild(node);
+
+    if (i < skills.length - 1) {
+      const connector = document.createElement('div');
+      connector.className = 'skill-connector';
+      connector.style.background = color;
+      col.appendChild(connector);
     }
+  });
 
-    const [skills, unlocks] = await Promise.all([
-      fetchAllSkills(),
-      fetchUserUnlocks(user.id)
-    ]);
+  return col;
+}
 
-    renderArbre(skills, unlocks);
+/** Vérifie si une compétence est disponible */
+function checkSkillAvailable(skill, unlockedIds, userXp) {
+  if (skill.parent_id && !unlockedIds.includes(skill.parent_id)) return false;
+  if (!skill.conditions) return true;
+  try {
+    const cond = typeof skill.conditions === 'string'
+      ? JSON.parse(skill.conditions)
+      : skill.conditions;
+
+    if (cond.xp_endurance && userXp.endurance < cond.xp_endurance) return false;
+    if (cond.xp_explosivity && userXp.explosivity < cond.xp_explosivity) return false;
+    if (cond.xp_mental && userXp.mental < cond.xp_mental) return false;
+    if (cond.xp_strategy && userXp.strategy < cond.xp_strategy) return false;
+    return true;
+  } catch {
+    return true;
+  }
+}
+
+/** Ouvre la pop-up de détail */
+function showSkillPopup(skill, state) {
+  const popup = document.querySelector('[data-skill-popup]');
+  const content = document.querySelector('[data-skill-content]');
+  const closeBtn = document.querySelector('[data-popup-close]');
+  if (!popup || !content) return;
+
+  const conditionText = skill.conditions
+    ? JSON.stringify(skill.conditions, null, 2)
+    : 'Aucune condition';
+  const rewardText = skill.reward
+    ? JSON.stringify(skill.reward, null, 2)
+    : 'Aucune récompense définie';
+
+  content.innerHTML = `
+    <h2>${skill.name}</h2>
+    <p class="skill-type">${skill.type}</p>
+    <p>${skill.description || 'Pas de description.'}</p>
+    <h3>Conditions</h3>
+    <pre>${conditionText}</pre>
+    <h3>Récompense</h3>
+    <pre>${rewardText}</pre>
+    <div class="skill-state">État : <strong>${state}</strong></div>
+  `;
+
+  if (state === 'available') {
+    const btn = document.createElement('button');
+    btn.className = 'btn primary';
+    btn.textContent = 'Débloquer';
+    btn.onclick = () => unlockSkill(skill.id);
+    content.appendChild(btn);
   }
 
-  function renderArbre(skills, unlockedIds) {
-    const container = document.querySelector('[data-arbre-container]');
-    if (!container) return;
-    container.innerHTML = '';
+  popup.classList.add('show');
+  closeBtn.onclick = () => popup.classList.remove('show');
+  popup.addEventListener('click', (e) => {
+    if (e.target === popup) popup.classList.remove('show');
+  });
+}
 
-    skills.forEach(skill => {
-      const isUnlocked = unlockedIds.includes(skill.id);
-      const isAvailable = !isUnlocked && checkSkillAvailable(skill, unlockedIds);
-      const stateClass = isUnlocked
-        ? 'unlocked'
-        : isAvailable
-        ? 'available'
-        : 'locked';
+/** Débloque une compétence */
+async function unlockSkill(skillId) {
+  const user = currentUser;
+  if (!user) return;
+  await supabaseClient.from('user_skills').insert({
+    user_id: user.id,
+    skill_id: skillId,
+    unlocked_at: new Date().toISOString()
+  });
+  Veloskill.showToast({
+    type: 'success',
+    title: 'Nouvelle compétence débloquée',
+    message: 'Bravo, tu viens de progresser 🎉'
+  });
+  await initArbre(); // rechargement
+}
 
-      const node = document.createElement('div');
-      node.className = `skill-node ${stateClass}`;
-      node.dataset.skillId = skill.id;
-      node.innerHTML = `
-        <div class="icon">${skill.icon || '🌿'}</div>
-        <div class="name">${skill.name}</div>
-        <div class="type">${skill.type}</div>
-      `;
-      if (isUnlocked || isAvailable) {
-        node.addEventListener('click', () => {
-          window.location.href = `skill.html?id=${skill.id}`;
-        });
-      }
-      container.appendChild(node);
-    });
-  }
+/** utilitaire */
+function capitalize(str) {
+  return str.charAt(0).toUpperCase() + str.slice(1);
+}
 
-  async function initSkill() {
+    async function initSkill() {
     const params = new URLSearchParams(window.location.search);
     const skillId = params.get('id');
     if (!skillId) {
@@ -390,45 +518,6 @@ const Veloskill = (() => {
           : 'Verrouillée 🔒'}
       </div>
     `;
-  }
-
-  // Simple vérification : une compétence est "available" si son parent est débloqué
-  function checkSkillAvailable(skill, unlockedIds) {
-    if (!skill.parent_id) return true; // racine
-    return unlockedIds.includes(skill.parent_id);
-  }
-
-  function showSkillPopup(skill, state) {
-    const popup = document.querySelector('[data-skill-popup]');
-    const content = document.querySelector('[data-skill-content]');
-    const closeBtn = document.querySelector('[data-popup-close]');
-    if (!popup || !content) return;
-
-    const conditionText = skill.conditions
-      ? JSON.stringify(skill.conditions, null, 2)
-      : 'Aucune condition';
-    const rewardText = skill.reward
-      ? JSON.stringify(skill.reward, null, 2)
-      : 'Aucune récompense définie';
-
-    content.innerHTML = `
-      <h2>${skill.name}</h2>
-      <p class="skill-type">${skill.type}</p>
-      <p>${skill.description || 'Pas de description.'}</p>
-      <h3>Conditions</h3>
-      <pre>${conditionText}</pre>
-      <h3>Récompense</h3>
-      <pre>${rewardText}</pre>
-      <div class="skill-state">
-        État : <strong>${state === 'unlocked' ? 'Débloquée 🌟' : state === 'available' ? 'Atteignable 🌱' : 'Verrouillée 🔒'}</strong>
-      </div>
-    `;
-
-    popup.classList.add('show'); // 👈 au lieu de hidden = false
-    closeBtn.onclick = () => popup.classList.remove('show');
-    popup.addEventListener('click', (e) => {
-      if (e.target === popup) popup.classList.remove('show');
-    });
   }
 
   /* --------------------- CALCUL XP DYNAMIQUE --------------------- */
