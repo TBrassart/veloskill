@@ -9,7 +9,9 @@
   <script src="supabase.js" defer></script>
   <script src="main.js" defer></script>
 </head>
+
 <body data-page="profile">
+  <!-- ===== En-tête ===== -->
   <header class="app-header">
     <button class="btn ghost" onclick="window.location.href='dashboard.html'">← Retour</button>
     <h1>Profil & Paramètres</h1>
@@ -24,7 +26,10 @@
     </div>
   </header>
 
+  <!-- ===== Contenu principal ===== -->
   <main class="profile-page">
+
+    <!-- Profil utilisateur -->
     <section class="profile-form">
       <h2>Mon profil cycliste</h2>
       <form data-profile-form>
@@ -48,66 +53,241 @@
       </form>
     </section>
 
+    <!-- Apparence -->
     <section class="theme-section">
       <h2>Apparence</h2>
       <button class="btn subtle" data-toggle-theme>Changer de thème</button>
     </section>
 
+    <!-- Export -->
     <section class="export-section">
       <h2>Export</h2>
       <button class="btn subtle" data-export-json>Exporter mes données JSON</button>
     </section>
 
+    <!-- Connexion Strava -->
     <section class="strava-section">
-        <h2>Connexion Strava</h2>
-        <button class="btn primary" data-connect-strava>Connecter Strava 🚴‍♂️</button>
-        <p class="small" data-strava-status>Non connecté</p>
+      <h2>Connexion Strava</h2>
+      <button class="btn primary" data-connect-strava>Connecter Strava 🚴‍♂️</button>
+      <p class="small" data-strava-status>Non connecté</p>
     </section>
+    <p class="small" data-sync-status></p>
 
   </main>
 
+  <!-- ===== Script Strava ===== -->
   <script>
+    // --- 1️⃣ Gestion du clic sur "Connecter Strava"
+    document.querySelector("[data-connect-strava]").addEventListener("click", () => {
+      const clientId = "178503";
+      const redirectUri = encodeURIComponent("https://veloskill.vercel.app/profile.html");
+      const scope = "read,activity:read_all";
+
+      window.location.href =
+        `https://www.strava.com/oauth/authorize?client_id=${clientId}&response_type=code&redirect_uri=${redirectUri}&scope=${scope}`;
+    });
+
+    // --- 2️⃣ Gestion du retour Strava (échange du code contre un token)
     async function handleStravaRedirect() {
-    const params = new URLSearchParams(window.location.search);
-    const code = params.get("code");
-    const statusEl = document.querySelector("[data-strava-status]");
+      const params = new URLSearchParams(window.location.search);
+      const code = params.get("code");
+      const statusEl = document.querySelector("[data-strava-status]");
 
-    if (!code) return;
+      if (!code) return; // pas de code dans l'URL, on ne fait rien
 
-    try {
+      try {
+        // Appel à l’API Vercel qui échange le code contre un token
         const res = await fetch("https://veloskill.vercel.app/api/strava-auth", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ code }),
-        cache: "no-store"
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ code }),
+          cache: "no-store"
         });
 
         console.log("Status:", res.status);
-        const text = await res.text(); // lit toujours la réponse brute
+        const text = await res.text();
         console.log("Réponse brute:", text);
 
         let data = {};
         try {
-        data = JSON.parse(text);
+          data = JSON.parse(text);
         } catch (e) {
-        console.warn("Réponse non JSON, brute:", text);
+          console.warn("Réponse non JSON:", text);
         }
 
+        // --- 3️⃣ Connexion réussie
         if (res.ok && data.access_token) {
-        statusEl.textContent = `✅ Connecté à Strava (${data.athlete.firstname} ${data.athlete.lastname})`;
-        console.log("✅ Strava connecté:", data);
+          statusEl.textContent = `✅ Connecté à Strava (${data.athlete.firstname} ${data.athlete.lastname})`;
+          console.log("✅ Strava connecté:", data);
+
+          // --- 4️⃣ Sauvegarde dans Supabase ---
+          try {
+            const supabaseClient = window.supabase;
+            const { data: user } = await supabaseClient.auth.getUser();
+
+            if (user?.user) {
+              const { id } = user.user;
+              const { error } = await supabaseClient
+                .from("profiles")
+                .update({
+                  strava_id: data.athlete.id.toString(),
+                  strava_access_token: data.access_token,
+                  strava_refresh_token: data.refresh_token,
+                  strava_expires_at: data.expires_at,
+                })
+                .eq("id", id);
+
+              if (error) console.error("Erreur Supabase:", error);
+              else console.log("✅ Tokens Strava enregistrés dans Supabase");
+            }
+          } catch (err) {
+            console.error("Erreur lors de la sauvegarde Supabase:", err);
+          }
+
+        // --- 5️⃣ Erreur de connexion Strava
         } else {
-        statusEl.textContent = `❌ Erreur de connexion (HTTP ${res.status})`;
-        console.error("❌ Erreur:", data);
+          statusEl.textContent = `❌ Erreur de connexion (HTTP ${res.status})`;
+          console.error("❌ Erreur:", data);
         }
-    } catch (err) {
+
+      } catch (err) {
         console.error("Erreur réseau:", err);
         statusEl.textContent = "❌ Erreur réseau lors de la connexion";
-    }
+      }
     }
 
+    // --- 3️⃣ Vérifie si Strava est déjà connecté (empêche reconnexion inutile)
+    async function checkStravaStatus() {
+      try {
+        const supabaseClient = window.supabase;
+        const { data: user } = await supabaseClient.auth.getUser();
+        if (!user?.user) return;
+
+        const { data: profile } = await supabaseClient
+          .from("profiles")
+          .select("strava_access_token, strava_expires_at, strava_id")
+          .eq("id", user.user.id)
+          .single();
+
+        const statusEl = document.querySelector("[data-strava-status]");
+        const btn = document.querySelector("[data-connect-strava]");
+
+        if (profile?.strava_access_token) {
+          statusEl.textContent = "✅ Connecté à Strava";
+          btn.textContent = "Reconnecter Strava";
+          btn.classList.add("connected");
+        } else {
+          statusEl.textContent = "Non connecté";
+          btn.textContent = "Connecter Strava 🚴‍♂️";
+          btn.classList.remove("connected");
+        }
+      } catch (err) {
+        console.error("Erreur lors de la vérification du statut Strava:", err);
+      }
+    }
+
+    // --- 4️⃣ Rafraîchit automatiquement le token Strava s’il est expiré
+    async function refreshStravaTokenIfNeeded() {
+        const supabaseClient = window.supabase;
+        const { data: user } = await supabaseClient.auth.getUser();
+        if (!user?.user) return;
+
+        const { data: profile, error } = await supabaseClient
+            .from("profiles")
+            .select("strava_access_token, strava_refresh_token, strava_expires_at")
+            .eq("id", user.user.id)
+            .single();
+
+        if (error || !profile) return;
+
+        const now = Math.floor(Date.now() / 1000);
+        if (profile.strava_expires_at > now) {
+            console.log("✅ Token Strava encore valide");
+            return; // encore bon
+        }
+
+        console.log("🔁 Token Strava expiré, rafraîchissement en cours...");
+
+        try {
+            const res = await fetch("https://veloskill.vercel.app/api/strava-refresh", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ refresh_token: profile.strava_refresh_token }),
+            });
+
+            const data = await res.json();
+            if (!res.ok || !data.access_token) throw new Error(JSON.stringify(data));
+
+            // Mise à jour du token dans Supabase
+            const { error: updateError } = await supabaseClient
+            .from("profiles")
+            .update({
+                strava_access_token: data.access_token,
+                strava_refresh_token: data.refresh_token,
+                strava_expires_at: data.expires_at,
+            })
+            .eq("id", user.user.id);
+
+            if (updateError) console.error("Erreur mise à jour token:", updateError);
+            else console.log("✅ Token Strava rafraîchi automatiquement");
+        } catch (err) {
+            console.error("Erreur refresh Strava:", err);
+        }
+    }
+
+    // --- 5️⃣ Synchronise automatiquement les activités Strava récentes
+    async function syncRecentActivities() {
+        const supabaseClient = window.supabase;
+        const { data: user } = await supabaseClient.auth.getUser();
+        if (!user?.user) return;
+
+        const { data: profile, error } = await supabaseClient
+            .from("profiles")
+            .select("strava_access_token")
+            .eq("id", user.user.id)
+            .single();
+
+        const syncEl = document.querySelector("[data-sync-status]"); // <-- on sélectionne ton <p>
+        if (syncEl) syncEl.textContent = "⏳ Synchronisation en cours...";
+
+        if (error || !profile?.strava_access_token) {
+            console.warn("Aucun token Strava disponible pour la synchro");
+            if (syncEl) syncEl.textContent = "❌ Aucune connexion Strava trouvée";
+            return;
+        }
+
+        console.log("🔁 Synchronisation des dernières activités Strava...");
+
+        try {
+            const res = await fetch("https://veloskill.vercel.app/api/strava-sync", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({
+                user_id: user.user.id,
+                access_token: profile.strava_access_token,
+            }),
+            });
+
+            const data = await res.json();
+
+            if (res.ok) {
+            console.log(`✅ ${data.imported} nouvelles activités importées`);
+            if (syncEl)
+                syncEl.textContent = `✅ ${data.imported} nouvelles activités synchronisées`;
+            } else {
+            console.error("❌ Erreur synchro Strava:", data);
+            if (syncEl) syncEl.textContent = "❌ Erreur pendant la synchronisation";
+            }
+        } catch (err) {
+            console.error("Erreur réseau pendant la synchro Strava:", err);
+            if (syncEl) syncEl.textContent = "❌ Erreur réseau pendant la synchronisation";
+        }
+    }
+
+    // --- Initialisation au chargement
     handleStravaRedirect();
+    checkStravaStatus();
+    refreshStravaTokenIfNeeded().then(syncRecentActivities);
   </script>
-
 </body>
 </html>
