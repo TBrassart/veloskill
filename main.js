@@ -1740,7 +1740,7 @@ async function syncStravaActivities(user) {
   let sinceParam = "";
   let isFirstSync = false;
 
-  if (!syncState?.initial_sync_done) {
+  if (true) {
     console.log("🚀 Première synchronisation : import complet de l’historique Strava");
     isFirstSync = true;
   } else if (syncState?.last_full_sync) {
