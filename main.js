@@ -196,6 +196,9 @@ const Veloskill = (() => {
       return;
     }
 
+    // 🔄 Synchronisation Strava automatique à l'ouverture
+    await autoSyncIfNeeded(user.id);
+
     const xp = await getOrComputeUserXp(user.id);
     renderDashboardXp(xp);
 
@@ -217,9 +220,8 @@ const Veloskill = (() => {
         });
 
         try {
-          // 🔄 Étape 1 : simule ou appelle la vraie sync Strava ici
-          // (ici on simule juste un délai réseau)
-          await new Promise((res) => setTimeout(res, 2000));
+          const access = await refreshStravaTokenIfNeeded(user.id);
+          await syncStravaActivities(user.id, access, false);
 
           // 🔄 Étape 2 : recalcul des XP immédiatement après la sync
           const newXp = await Veloskill.calculateXpFromActivities(user.id);
@@ -1612,6 +1614,120 @@ async function updateUserMasteries(userId) {
   });
 }
 
+/* --------------------- STRAVA SYNC AUTOMATIQUE --------------------- */
+
+// Rafraîchit le token Strava si expiré
+async function refreshStravaTokenIfNeeded(userId) {
+  const { data: token } = await supabaseClient
+    .from('strava_tokens')
+    .select('*')
+    .eq('user_id', userId)
+    .maybeSingle();
+
+  if (!token) return null;
+
+  if (new Date(token.expires_at) < new Date()) {
+    const res = await fetch('https://www.strava.com/oauth/token', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        client_id: STRAVA_CLIENT_ID,
+        client_secret: STRAVA_CLIENT_SECRET,
+        grant_type: 'refresh_token',
+        refresh_token: token.refresh_token
+      })
+    });
+
+    const data = await res.json();
+
+    if (data?.access_token) {
+      await supabaseClient
+        .from('strava_tokens')
+        .update({
+          access_token: data.access_token,
+          refresh_token: data.refresh_token,
+          expires_at: new Date(data.expires_at * 1000).toISOString()
+        })
+        .eq('user_id', userId);
+
+      return data.access_token;
+    }
+  }
+
+  return token.access_token;
+}
+
+// Fonction principale : récupère les activités depuis Strava
+async function syncStravaActivities(userId, accessToken, fullSync = false) {
+  const since = fullSync ? 0 : Math.floor(Date.now() / 1000) - 60 * 60 * 24 * 7; // dernière semaine
+  let page = 1;
+  let activities = [];
+
+  while (true) {
+    const res = await fetch(
+      `https://www.strava.com/api/v3/athlete/activities?after=${since}&page=${page}&per_page=100`,
+      { headers: { Authorization: `Bearer ${accessToken}` } }
+    );
+
+    const data = await res.json();
+    if (!Array.isArray(data) || !data.length) break;
+    activities.push(...data);
+    page++;
+  }
+
+  for (const act of activities) {
+    await supabaseClient.from('activities').upsert({
+      id: act.id,
+      user_id: userId,
+      date: act.start_date,
+      distance: act.distance / 1000,
+      elevation: act.total_elevation_gain,
+      avg_power: act.average_watts,
+      max_power: act.max_watts,
+      duration: act.moving_time,
+      location: act.name || act.location_city || 'Sortie Strava',
+      type: act.type
+    });
+  }
+
+  await supabaseClient
+    .from('strava_tokens')
+    .update({
+      last_full_sync: new Date().toISOString(),
+      initial_sync_done: true
+    })
+    .eq('user_id', userId);
+
+  await calculateXpFromActivities(userId);
+  await updateUserMasteries(userId);
+  await updateBossProgress(userId);
+
+  Veloskill.showToast({
+    type: 'success',
+    title: 'Strava synchronisé',
+    message: `${activities.length} activités importées 🚴‍♂️`
+  });
+}
+
+// Déclenche la sync si nécessaire (à chaque ouverture du Dashboard)
+async function autoSyncIfNeeded(userId) {
+  const { data: token } = await supabaseClient
+    .from('strava_tokens')
+    .select('*')
+    .eq('user_id', userId)
+    .maybeSingle();
+
+  if (!token) return;
+
+  const lastSync = token.last_full_sync ? new Date(token.last_full_sync) : null;
+  const hoursSince = lastSync ? (Date.now() - lastSync.getTime()) / 3600000 : Infinity;
+
+  // Première connexion ou >2h sans sync
+  if (!token.initial_sync_done || hoursSince > 2) {
+    const access = await refreshStravaTokenIfNeeded(userId);
+    await syncStravaActivities(userId, access, !token.initial_sync_done);
+  }
+}
 
   /* --------------------- INIT GLOBAL --------------------- */
   async function init() {
