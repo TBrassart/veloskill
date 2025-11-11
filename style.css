@@ -1331,22 +1331,35 @@ header {
   background: #333;
 }
 
-/* --- Arbre détaillé (vue après clic sur un bloc) --- */
+/* === Correction affichage Skill Tree === */
 [data-arbre-container] {
+  position: absolute;
+  top: 100px; /* sous le header */
+  left: 0;
   width: 100%;
+  min-height: calc(100vh - 100px);
   display: flex;
   flex-direction: column;
   align-items: center;
   justify-content: flex-start;
-  min-height: 80vh;
   padding: 2rem 0;
-  margin: 0 auto;
+  opacity: 0;
+  transform: translateY(20px);
+  pointer-events: none;
   transition: opacity 0.35s ease, transform 0.35s ease;
 }
 
 [data-arbre-container].view--active {
   opacity: 1;
   transform: translateY(0);
+  pointer-events: auto;
+}
+
+/* S’assure que les arbres et overview ne se chevauchent pas */
+.arbre-page {
+  position: relative;
+  overflow: hidden;
+  min-height: 100vh;
 }
 
 .skill-layer {
