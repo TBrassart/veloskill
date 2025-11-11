@@ -82,25 +82,27 @@
     if (!code) return;
 
     try {
-        const res = await fetch("/api/strava-auth", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ code }),
+        const res = await fetch("https://veloskill.vercel.app/api/strava-auth", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ code }),
         });
-        const data = await res.json();
 
-        if (data.access_token) {
-        statusEl.textContent = "✅ Connecté à Strava";
-        console.log("Strava:", data);
-        // TODO : sauvegarde Supabase ou affichage du profil athlète
+        console.log("Status:", res.status);
+        const data = await res.json();
+        console.log("Réponse Strava:", data);
+
+        if (res.ok && data.access_token) {
+            statusEl.textContent = "✅ Connecté à Strava";
+            console.log("Strava:", data);
         } else {
-        statusEl.textContent = "❌ Erreur de connexion à Strava";
-        console.error("Erreur:", data);
+            statusEl.textContent = `❌ Erreur de connexion (code ${res.status})`;
+            console.error("Erreur:", data);
         }
-    } catch (err) {
-        console.error(err);
+        } catch (err) {
+        console.error("Erreur réseau:", err);
         statusEl.textContent = "❌ Erreur réseau lors de la connexion";
-    }
+        }
     }
 
     handleStravaRedirect();
