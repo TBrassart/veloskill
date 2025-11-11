@@ -1817,7 +1817,7 @@ async function autoSyncIfNeeded(user) {
   // Première connexion ou >2h sans sync
   if (!token.initial_sync_done || hoursSince > 2) {
     console.log("🔄 Lancement d'une synchronisation Strava automatique...");
-    await syncStravaActivities(user);
+    await Veloskill.syncStravaActivities(user);
 
     // Met à jour le flag dans strava_tokens
     await supabaseClient
@@ -1885,7 +1885,8 @@ async function autoSyncIfNeeded(user) {
   return {
     showToast,
     calculateXpFromActivities,
-    getOrComputeUserXp
+    getOrComputeUserXp,
+    syncStravaActivities
   };
 })();
 
