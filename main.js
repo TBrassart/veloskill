@@ -625,14 +625,15 @@ function showSkillPopup(skill, state) {
     </div>
 
     <div class="skill-popup-footer">
-      <span class="state-label ${state}">${state === 'unlocked' ? '✅ Débloquée' : state === 'available' ? '🌱 Atteignable' : '🔒 Verrouillée'}</span>
-      ${state === 'available' ? `<button class="btn primary" data-unlock-skill>Débloquer</button>` : ''}
+      <span class="state-label ${state}">
+        ${state === 'unlocked'
+          ? '✅ Compétence débloquée automatiquement'
+          : state === 'available'
+            ? '🌱 Conditions remplies — se débloquera automatiquement'
+            : '🔒 Conditions non remplies'}
+      </span>
     </div>
   `;
-
-  if (state === 'available') {
-    content.querySelector('[data-unlock-skill]').addEventListener('click', () => unlockSkill(skill.id));
-  }
 
   popup.classList.add('show');
   closeBtn.onclick = () => popup.classList.remove('show');
