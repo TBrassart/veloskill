@@ -998,14 +998,17 @@ const Veloskill = (() => {
   /* --------------------- MODULE BOSS --------------------- */
 
   async function initBoss() {
-    await updateBossProgress(user.id);
     const sessionData = await loadSessionAndProfile();
     const user = sessionData?.user;
     const profile = sessionData?.profile;
+
     if (!user) {
       window.location.href = 'index.html';
       return;
     }
+
+    // ✅ on a maintenant user → on peut appeler updateBossProgress
+    await updateBossProgress(user.id);
 
     // 1. Récupérer le niveau global
     const global = await fetchGlobalXp(user.id);
@@ -1019,6 +1022,7 @@ const Veloskill = (() => {
     // 4. Rendre la page
     renderBossList(bosses, attempts, global.level);
   }
+
 
   /* --- Requêtes Supabase --- */
 
