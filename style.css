@@ -886,3 +886,64 @@ header {
   font-weight: bold;
   text-transform: uppercase;
 }
+
+.boss-card {
+  background: #111827;
+  border: 1px solid #1f2937;
+  border-radius: 16px;
+  padding: 1rem 1.5rem;
+  margin-bottom: 1rem;
+  transition: all 0.25s ease;
+  cursor: pointer;
+}
+
+.boss-card:hover {
+  border-color: #f97316;
+  transform: translateY(-2px);
+}
+
+.boss-card.locked {
+  opacity: 0.6;
+  cursor: not-allowed;
+}
+
+.boss-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+}
+
+.boss-info h3 {
+  margin: 0;
+}
+
+.boss-meta {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+  font-size: 0.8rem;
+  color: #9ca3af;
+  margin-top: 6px;
+}
+
+.boss-bar {
+  height: 8px;
+  border-radius: 999px;
+  background: #1f2937;
+  overflow: hidden;
+  margin-top: 8px;
+}
+
+.boss-bar-fill {
+  height: 100%;
+  background: linear-gradient(to right, #f97316, #fb923c);
+  width: 0%;
+  transition: width 0.5s ease-out;
+}
+
+.boss-progress-text {
+  font-size: 0.75rem;
+  color: #9ca3af;
+  margin-top: 4px;
+  text-align: right;
+}

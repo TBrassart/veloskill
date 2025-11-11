@@ -972,6 +972,178 @@ const Veloskill = (() => {
     `;
   }
 
+  /* --------------------- MODULE BOSS --------------------- */
+
+  async function initBoss() {
+    const sessionData = await loadSessionAndProfile();
+    const user = sessionData?.user;
+    const profile = sessionData?.profile;
+    if (!user) {
+      window.location.href = 'index.html';
+      return;
+    }
+
+    // 1. Récupérer le niveau global
+    const global = await fetchGlobalXp(user.id);
+
+    // 2. Charger la liste des boss actifs
+    const bosses = await fetchBosses();
+
+    // 3. Charger les tentatives de cet utilisateur
+    const attempts = await fetchBossAttempts(user.id);
+
+    // 4. Rendre la page
+    renderBossList(bosses, attempts, global.level);
+  }
+
+  /* --- Requêtes Supabase --- */
+
+  async function fetchBosses() {
+    const { data, error } = await supabaseClient
+      .from('bosses')
+      .select('*')
+      .eq('actif', true)
+      .order('level_required', { ascending: true });
+
+    if (error) {
+      console.error('Erreur chargement boss:', error);
+      Veloskill.showToast({
+        type: 'error',
+        title: 'Erreur',
+        message: 'Impossible de charger la liste des Boss.'
+      });
+      return [];
+    }
+    return data;
+  }
+
+  async function fetchBossAttempts(userId) {
+    const { data, error } = await supabaseClient
+      .from('boss_attempts')
+      .select('*')
+      .eq('user_id', userId)
+      .order('updated_at', { ascending: false });
+
+    if (error) {
+      console.warn('Pas encore de boss_attempts pour cet utilisateur.');
+      return [];
+    }
+    return data || [];
+  }
+
+  /* --- Affichage --- */
+
+  function renderBossList(bosses, attempts, globalLevel) {
+    const list = document.querySelector('[data-boss-list]');
+    if (!list) return;
+    list.innerHTML = '';
+
+    if (!bosses.length) {
+      list.innerHTML = `<p style="text-align:center;color:#888;">Aucun boss actif pour le moment.</p>`;
+      return;
+    }
+
+    bosses.forEach(boss => {
+      const attempt = attempts.find(a => a.boss_id === boss.id);
+      const score = attempt?.score || 0;
+      const bestScore = attempt?.best_score || 0;
+      const statut = attempt?.statut || (globalLevel < boss.level_required ? 'locked' : 'en_cours');
+      const progress = Math.min(100, Math.round((score / boss.hp_target) * 100));
+      const isDefeated = statut === 'reussi';
+
+      const card = document.createElement('div');
+      card.className = `boss-card ${statut}`;
+      card.innerHTML = `
+        <div class="boss-header">
+          <div class="boss-icon">${isDefeated ? '🏆' : bossIconForType(boss.type)}</div>
+          <div class="boss-info">
+            <h3>${boss.nom}</h3>
+            <p class="boss-cycliste">${boss.cycliste || ''}</p>
+          </div>
+          <div class="boss-status">
+            ${statutLabel(statut, boss.level_required)}
+          </div>
+        </div>
+
+        <p class="boss-desc">${boss.recompense || ''}</p>
+
+        <div class="boss-meta">
+          <span>Type : ${typeLabel(boss.type)}</span>
+          <span>Niveau requis : ${boss.level_required}</span>
+          <span>Objectif : ${formatTarget(boss)}</span>
+        </div>
+
+        <div class="boss-progress">
+          <div class="boss-bar">
+            <div class="boss-bar-fill" style="width:${progress}%"></div>
+          </div>
+          <div class="boss-progress-text">
+            ${score}/${boss.hp_target} (${progress}%)
+          </div>
+        </div>
+      `;
+
+      if (statut === 'en_cours' && !isDefeated) {
+        card.addEventListener('click', () => {
+          Veloskill.showToast({
+            type: 'info',
+            title: `${boss.nom}`,
+            message: `Défi en cours : ${boss.recompense || 'aucune récompense précisée'}.`
+          });
+        });
+      }
+
+      if (isDefeated) {
+        card.addEventListener('click', () => {
+          Veloskill.showToast({
+            type: 'success',
+            title: `${boss.nom} vaincu 🏆`,
+            message: `Tu as remporté ce défi, bravo !`
+          });
+        });
+      }
+
+      if (statut === 'locked') {
+        card.classList.add('locked');
+      }
+
+      list.appendChild(card);
+    });
+  }
+
+  /* --- Helpers UI --- */
+
+  function bossIconForType(type) {
+    if (type === 'distance') return '🚴‍♂️';
+    if (type === 'elevation') return '⛰️';
+    if (type === 'time') return '⏱️';
+    return '💀';
+  }
+
+  function typeLabel(type) {
+    if (type === 'distance') return 'Distance';
+    if (type === 'elevation') return 'Dénivelé';
+    if (type === 'time') return 'Temps';
+    return type;
+  }
+
+  function formatTarget(boss) {
+    if (boss.type === 'distance') return `${boss.hp_target} km`;
+    if (boss.type === 'elevation') return `${boss.hp_target} m D+`;
+    if (boss.type === 'time') return `${boss.hp_target} min`;
+    return boss.hp_target;
+  }
+
+  function statutLabel(statut, levelRequired) {
+    switch (statut) {
+      case 'reussi': return '🏆 Réussi';
+      case 'echoue': return '❌ Échoué';
+      case 'expire': return '⌛ Expiré';
+      case 'locked': return `🔒 Niveau ${levelRequired} requis`;
+      default: return '🔥 En cours';
+    }
+  }
+
   /* --------------------- INIT GLOBAL --------------------- */
   async function init() {
     const page = document.body.dataset.page || 'landing';
@@ -1001,7 +1173,7 @@ const Veloskill = (() => {
         await initSkill();
         break;
       case 'boss':
-        // initBoss(); // déjà implémenté dans ton module Boss
+        await initBoss();
         break;
       case 'profile':
         await initProfile();
