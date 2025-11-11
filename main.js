@@ -77,7 +77,11 @@ const Veloskill = (() => {
     const dropdownTrigger = document.querySelector('[data-avatar-dropdown-trigger]');
     const dropdown = document.querySelector('[data-avatar-dropdown]');
     if (dropdownTrigger && dropdown) {
-      dropdownTrigger.addEventListener('click', () => dropdown.classList.toggle('open'));
+      dropdownTrigger.addEventListener('click', (e) => {
+        e.stopPropagation(); // ⛔ Empêche le click de remonter et fermer le menu
+        dropdown.classList.toggle('open');
+      });
+
       document.addEventListener('click', (e) => {
         if (!dropdown.contains(e.target) && !dropdownTrigger.contains(e.target)) {
           dropdown.classList.remove('open');
@@ -585,15 +589,27 @@ async function evaluateCondition(cond, stats, userId) {
     case 'trainer':
       metricValue = stats.trainer_duration_h_max || 0;
       break;
-    case 'segment':
-      // Cas spécial : vérifier si l'utilisateur a déjà le segment_id dans sa table segments
-      const { data: segData } = await supabaseClient
-        .from('segments')
-        .select('segment_id')
-        .eq('user_id', userId);
-      const segmentIds = segData.map(s => s.segment_id);
-      metricValue = segmentIds.includes(c.thresholds[0]) ? c.thresholds[0] : 0;
+    case 'segment': {
+      // ✅ Si les IDs de segments sont déjà passés dans les stats, on les utilise
+      const userSegmentIds =
+        (stats.segmentIds && Array.isArray(stats.segmentIds))
+          ? stats.segmentIds
+          : (
+              (await supabaseClient
+                .from('segments')
+                .select('segment_id')
+                .eq('user_id', userId)
+              ).data || []
+            ).map(s => s.segment_id);
+
+      const requiredSegments = Array.isArray(c.thresholds) ? c.thresholds : [];
+
+      // ✅ Validation si au moins un segment correspond
+      const hasMatch = requiredSegments.some(segId => userSegmentIds.includes(segId));
+
+      metricValue = hasMatch ? 1 : 0;
       break;
+    }
     default:
       return 0;
   }
@@ -623,7 +639,7 @@ async function updateUserMasteries(userId) {
 
     for (const mastery of masteries) {
       const cond = mastery.condition;
-      const level = evaluateCondition(cond, stats);
+      const level = await evaluateCondition(cond, stats);
 
       if (level > 0) {
         await supabaseClient.from('user_masteries').upsert({
@@ -1935,6 +1951,33 @@ async function syncStravaActivities(user) {
 
         const reduced = points.filter((_, i) => i % 5 === 0);
         await supabaseClient.from("streams").insert(reduced);
+      }
+
+      // Insertion des segments (cols, efforts, etc.)
+      const { segment_efforts } = details;
+
+      if (Array.isArray(segment_efforts) && segment_efforts.length > 0) {
+        const segData = segment_efforts.map(seg => ({
+          user_id: user.id,  // 🔴 important pour identifier les segments de l'utilisateur
+          activity_id: act.id,
+          segment_id: seg.segment.id,
+          name: seg.segment.name,
+          distance_m: seg.segment.distance,
+          average_grade: seg.segment.average_grade,
+          start_lat: seg.segment.start_latlng ? seg.segment.start_latlng[0] : null,
+          start_lng: seg.segment.start_latlng ? seg.segment.start_latlng[1] : null,
+          end_lat: seg.segment.end_latlng ? seg.segment.end_latlng[0] : null,
+          end_lng: seg.segment.end_latlng ? seg.segment.end_latlng[1] : null,
+        }));
+
+        // ⚙️ Utilise upsert pour éviter les doublons entre les syncs
+        const { error: segError } = await supabaseClient
+          .from("segments")
+          .upsert(segData, { onConflict: 'user_id,activity_id,segment_id' });
+
+        if (segError) {
+          console.error("⚠️ Erreur insertion segments:", segError);
+        }
       }
 
       totalImported++;
