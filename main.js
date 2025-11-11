@@ -334,7 +334,7 @@ async function renderSkillTrees(trees, unlockedIds, xp, userId) {
     column.className = `skill-tree ${type}`;
     column.style.color = colors[type];
     column.innerHTML = `<h3 class="skill-tree-title">${capitalize(type)}</h3>`;
-    const tree = await renderSkillTreeRecursive(list, unlockedIds, colors[type], xp, user.id, null, 1);
+    const tree = await renderSkillTreeRecursive(list, unlockedIds, colors[type], xp, userId, null, 1);
     column.appendChild(tree);
     container.appendChild(column);
   }
@@ -577,7 +577,7 @@ function showSkillPopup(skill, state) {
 async function unlockSkill(skillId) {
   const user = currentUser;
   if (!user) return;
-  await supabaseClient.from('user_skills').insert({
+  await supabaseClient.from('user_skills_progress').insert({
     user_id: user.id,
     skill_id: skillId,
     unlocked_at: new Date().toISOString()
@@ -595,7 +595,14 @@ async function unlockSkill(skillId) {
 ----------------------------------------------------------- */
 
 async function updateUnlockedSkillsFromHistory(userId, skills, unlockedIds, userXp) {
-  console.log('🔁 Vérification historique des compétences...');
+  const lastCheck = localStorage.getItem('last-skill-check');
+  const now = Date.now();
+  if (lastCheck && now - parseInt(lastCheck) < 6 * 3600 * 1000) { // 6h
+    console.log('🕓 Vérification historique déjà effectuée récemment.');
+    return unlockedIds;
+  }
+  localStorage.setItem('last-skill-check', now);
+  console.log('🔁 Vérification historique complète...');
   const newlyUnlocked = [];
 
   for (const skill of skills) {
@@ -628,7 +635,7 @@ async function updateUnlockedSkillsFromHistory(userId, skills, unlockedIds, user
     if (canUnlock) {
       // Déjà dans user_skills ?
       const { data: already } = await supabaseClient
-        .from('user_skills')
+        .from('user_skills_progress')
         .select('id')
         .eq('user_id', userId)
         .eq('skill_id', skill.id)
@@ -639,7 +646,7 @@ async function updateUnlockedSkillsFromHistory(userId, skills, unlockedIds, user
       newlyUnlocked.push(skill.id);
       unlockedIds.push(skill.id);
 
-      await supabaseClient.from('user_skills').insert({
+      await supabaseClient.from('user_skills_progress').insert({
         user_id: userId,
         skill_id: skill.id,
         unlocked_at: new Date().toISOString()
