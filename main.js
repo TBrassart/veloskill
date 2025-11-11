@@ -373,18 +373,39 @@ const Veloskill = (() => {
     let endurance = 0, explosivity = 0, mental = 0, strategy = 0;
 
     for (const act of activities) {
-      const dist = act.distance || 0;      // km
-      const elev = act.elevation || 0;     // m
-      const dur = act.duration || 0;       // s
-      const power = act.avg_power || 0;    // W
+      const dist = Number(act.distance) || 0;   // km
+      const elev = Number(act.elevation) || 0;  // m
+      const dur = Number(act.duration) || 0;    // s
+      const power = Number(act.avg_power) || 0; // W
       const date = new Date(act.date);
 
-      // ---- Formules XP de base ----
-      endurance += dist * 10 + dur / 300;                  // distance + temps de selle
-      explosivity += (power > 200 ? (power - 200) * 0.5 : 0) + elev * 0.1; // puissance & dénivelé
-      mental += dur / 120 + (date.getDay() === 0 ? 50 : 0); // bonus régularité (sortie dimanche)
-      strategy += (dist / (dur / 3600)) * 2; // vitesse moyenne * 2
+      // Recalculer la vitesse moyenne en km/h si possible
+      const speed = dur > 0 ? (dist / (dur / 3600)) : 0;
+
+      // ---- Barème XP réaliste (unités réelles) ----
+      // Idée : ~1000 à 3000 XP pour une sortie standard
+
+      // Endurance : distance + durée (en h)
+      endurance += dist * 20 + (dur / 3600) * 200;
+
+      // Explosivité : puissance et dénivelé
+      if (power > 0) explosivity += Math.max(0, (power - 150)) * 1.5;
+      explosivity += elev * 0.3; // bonus pour grimpe
+
+      // Mental : durée longue + bonus week-end
+      mental += (dur / 3600) * 150;
+      if ([0, 6].includes(date.getDay())) mental += 200; // samedi/dimanche
+
+      // Stratégie : vitesse moyenne + variété (si on a du power)
+      strategy += speed * 15;
+      if (power > 0) strategy += (power / 10);
+
+      // 🎯 BONUS DE VARIÉTÉ — à placer ici
+      if (dist > 100) endurance += 500;    // longues distances
+      if (elev > 1500) explosivity += 400; // gros dénivelé
+      if (dur > 14400) mental += 300;      // >4h de selle
     }
+
 
     // ✅ Crée l’objet XP avant de le sauvegarder
     const xp = {
@@ -747,17 +768,24 @@ const Veloskill = (() => {
     });
   }
 
+  // Renvoie le niveau en fonction de l'XP total (progression douce)
   function computeLevelFromXp(xp) {
-    return Math.floor(Math.sqrt((xp || 0) / 100)) + 1;
+    if (!xp) return 1;
+    // Logarithmique + légère racine pour un ressenti RPG
+    const level = Math.floor(Math.pow(xp / 1000, 0.45)) + 1;
+    return Math.min(level, 100); // limite à 100 niveaux
   }
+
+  // XP total requis pour le début d'un niveau donné
   function computeLevelBaseXp(level) {
     if (level <= 1) return 0;
-    const prev = level - 1;
-    return 100 * prev * prev;
+    // Inverse de la fonction ci-dessus
+    return Math.round(1000 * Math.pow(level - 1, 1 / 0.45));
   }
+
+  // XP total requis pour atteindre le niveau suivant
   function computeNextLevelXp(level) {
-    const next = level + 1;
-    return 100 * next * next;
+    return Math.round(1000 * Math.pow(level, 1 / 0.45));
   }
 
   function renderDashboardBossPreview() {
