@@ -623,3 +623,141 @@ body.light-theme input {
 .nav-right {
   position: relative;
 }
+
+/* === En-tête principal === */
+.app-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 1rem 2rem;
+  background: var(--color-surface, #121212);
+  border-bottom: 1px solid rgba(255, 255, 255, 0.1);
+  box-shadow: 0 2px 10px rgba(0, 0, 0, 0.4);
+  position: sticky;
+  top: 0;
+  z-index: 100;
+}
+
+.app-header h1 {
+  font-size: 1.6rem;
+  font-weight: 700;
+  color: #fff;
+  letter-spacing: -0.5px;
+}
+
+/* Bouton retour stylé */
+.app-header .btn.ghost {
+  background: transparent;
+  border: 1px solid rgba(255, 255, 255, 0.2);
+  color: #fff;
+  border-radius: 8px;
+  padding: 0.4rem 1rem;
+  transition: all 0.2s ease-in-out;
+}
+.app-header .btn.ghost:hover {
+  background: rgba(255, 255, 255, 0.1);
+}
+
+/* === Avatar + menu utilisateur === */
+.avatar-wrapper {
+  cursor: pointer;
+  position: relative;
+}
+
+.avatar {
+  background: linear-gradient(135deg, #ff6f00, #ff9100);
+  color: #fff;
+  font-weight: bold;
+  border-radius: 50%;
+  width: 38px;
+  height: 38px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  box-shadow: 0 0 10px rgba(255, 111, 0, 0.3);
+  transition: transform 0.2s ease-in-out;
+}
+.avatar:hover {
+  transform: scale(1.08);
+}
+
+/* Dropdown utilisateur */
+.avatar-dropdown {
+  position: absolute;
+  top: 50px;
+  right: 0;
+  background: #1e1e1e;
+  border-radius: 12px;
+  box-shadow: 0 6px 20px rgba(0, 0, 0, 0.5);
+  padding: 1rem;
+  display: none;
+  flex-direction: column;
+  gap: 0.5rem;
+  width: 180px;
+}
+
+.avatar-wrapper:hover .avatar-dropdown {
+  display: flex;
+}
+
+.avatar-name {
+  font-weight: 600;
+  color: #fff;
+  text-align: center;
+  margin-bottom: 0.2rem;
+}
+
+.avatar-dropdown hr {
+  border: none;
+  border-top: 1px solid rgba(255, 255, 255, 0.1);
+  margin: 0.5rem 0;
+}
+
+.avatar-dropdown button {
+  background: #333;
+  color: #fff;
+  border: none;
+  border-radius: 6px;
+  padding: 0.4rem;
+  cursor: pointer;
+  transition: background 0.2s ease;
+}
+.avatar-dropdown button:hover {
+  background: #444;
+}
+
+/* === Bannière profil === */
+.profile-banner {
+  background: linear-gradient(135deg, #1e1e1e, #121212);
+  border-bottom: 1px solid rgba(255, 255, 255, 0.1);
+  padding: 2rem 2.5rem;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.banner-content {
+  display: flex;
+  align-items: center;
+  gap: 1.5rem;
+}
+
+.banner-avatar {
+  width: 80px;
+  height: 80px;
+  border-radius: 50%;
+  object-fit: cover;
+  box-shadow: 0 0 12px rgba(255, 145, 0, 0.4);
+}
+
+.banner-content h2 {
+  font-size: 1.6rem;
+  font-weight: 700;
+  color: #fff;
+}
+
+.banner-content p {
+  font-size: 0.9rem;
+  color: rgba(255, 255, 255, 0.7);
+  margin-top: 0.2rem;
+}
