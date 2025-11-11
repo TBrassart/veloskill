@@ -1694,6 +1694,8 @@ async function syncStravaActivities(user) {
 
     activities = activities.concat(data);
     page++;
+    // 💡 TEMPORAIRE : limite à la première page (~50 activités max)
+    if (page > 1) break;
   }
 
   console.log(`📥 ${activities.length} activités trouvées sur Strava.`);
@@ -1785,6 +1787,11 @@ async function syncStravaActivities(user) {
   }
 
   console.log("🎉 Synchronisation Strava terminée !");
+  Veloskill.showToast({
+    type: "success",
+    title: "Import terminé",
+    message: `${activities.length} activités importées 🚴‍♂️`
+  });
 }
 
 // 🔁 Déclenche la sync si nécessaire (à chaque ouverture du Dashboard)
