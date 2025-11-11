@@ -246,37 +246,3 @@ async function exchangeStravaCodeForTokens(userId, code) {
     initial_sync_done: false
   });
 }
-
-async function syncStravaActivities(userId) {
-  const { data: tokenData } = await supabaseClient
-    .from('strava_tokens')
-    .select('*')
-    .eq('user_id', userId)
-    .single();
-
-  if (!tokenData) throw new Error('Aucun token Strava trouvé.');
-
-  const { access_token } = tokenData;
-  const res = await fetch('https://www.strava.com/api/v3/athlete/activities?per_page=50', {
-    headers: { Authorization: `Bearer ${access_token}` }
-  });
-  const activities = await res.json();
-
-  for (const act of activities) {
-    await supabaseClient.from('activities').upsert({
-      id: act.id,
-      user_id: userId,
-      date: act.start_date,
-      distance: act.distance, // en mètres
-      elevation: act.total_elevation_gain,
-      avg_power: act.average_watts,
-      max_power: act.max_watts,
-      duration: act.moving_time,
-      location: act.name,
-      type: act.type
-    });
-  }
-
-  await supabaseClient.from('strava_tokens').update({ initial_sync_done: true }).eq('user_id', userId);
-}
-
