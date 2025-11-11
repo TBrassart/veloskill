@@ -519,7 +519,7 @@ const Veloskill = (() => {
     // Lancer OAuth Strava
     stravaBtn.addEventListener('click', () => {
       const clientId = STRAVA_CLIENT_ID;
-      const redirectUri = encodeURIComponent('https://veloskill.netlify.app/profile.html');
+      const redirectUri = encodeURIComponent('https://https://veloskill.vercel.app/profile.html');
       const scope = encodeURIComponent('read,activity:read_all');
       const url = `https://www.strava.com/oauth/authorize?client_id=${clientId}&response_type=code&redirect_uri=${redirectUri}&approval_prompt=auto&scope=${scope}`;
       window.location.href = url;
