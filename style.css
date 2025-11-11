@@ -1138,12 +1138,18 @@ header {
 .arbre-block::before {
   content: '';
   position: absolute;
-  inset: -3px;
+  inset: -2px;
   border-radius: 22px;
   background: var(--color);
-  filter: blur(24px);
-  opacity: 0.6;
+  filter: blur(10px);
+  opacity: 0.25;
   z-index: 0;
+  transition: opacity 0.3s ease, filter 0.3s ease;
+}
+
+.arbre-block:hover::before {
+  opacity: 0.4;
+  filter: blur(14px);
 }
 
 /* === Contenu texte / icône === */

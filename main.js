@@ -328,11 +328,17 @@ function renderArbreOverview(trees, unlockedIds, xp, userId) {
     `;
 
     block.addEventListener('click', async () => {
+      // Vue détaillée visible
       overview.classList.remove('view--active');
       container.classList.add('view--active');
       btnRetour.classList.add('is-visible');
-      container.innerHTML = ''; // reset avant affichage
-      await renderSkillTreeRecursive(list, unlockedIds, colors[type], xp, userId, null, 1);
+      
+      // Nettoyage
+      container.innerHTML = '';
+
+      // On construit l’arbre complet et on l’insère dans le container
+      const tree = await renderSkillTreeRecursive(list, unlockedIds, colors[type], xp, userId, null, 1);
+      if (tree) container.appendChild(tree);
     });
 
     overview.appendChild(block);
