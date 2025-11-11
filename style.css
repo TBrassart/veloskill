@@ -847,3 +847,42 @@ header {
 .xp-card:hover::after {
   opacity: 1;
 }
+
+.global-capsule {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  padding: 4px 10px 4px 6px;
+  border-radius: 999px;
+  background: linear-gradient(135deg, #42c779, #5b74ff);
+  color: white;
+  font-weight: 600;
+  font-size: 0.9rem;
+  transition: transform 0.3s ease, box-shadow 0.3s ease;
+  cursor: default;
+  box-shadow: 0 0 8px rgba(66, 199, 121, 0.4);
+}
+
+.global-capsule:hover {
+  transform: scale(1.05);
+  box-shadow: 0 0 12px rgba(91, 116, 255, 0.5);
+}
+
+.global-capsule .global-level {
+  font-weight: 600;
+}
+
+.global-capsule .global-avatar {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: orange;
+  color: white;
+  border-radius: 50%;
+  width: 28px;
+  height: 28px;
+  font-size: 0.9rem;
+  font-weight: bold;
+  text-transform: uppercase;
+}

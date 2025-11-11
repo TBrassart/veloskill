@@ -101,33 +101,31 @@ const Veloskill = (() => {
     const header = document.querySelector('header');
     if (!header || !currentUser) return;
 
-    const { data, error } = await supabaseClient
+    const { data } = await supabaseClient
       .from('global_xp')
       .select('total_xp, level')
       .eq('user_id', currentUser.id)
       .maybeSingle();
 
     const level = data?.level || 1;
-
-    // Supprime s’il existe déjà
-    let levelBadge = document.querySelector('[data-global-level]');
-    if (levelBadge) levelBadge.remove();
-
-    // Crée le badge visuel
-    levelBadge = document.createElement('div');
-    levelBadge.dataset.globalLevel = level;
-    levelBadge.className = 'global-level-badge';
-    levelBadge.innerHTML = `🌍 Niv. ${level}`;
-
-    // L’insère juste à côté de l’avatar
     const avatar = document.querySelector('[data-user-avatar]');
-    if (avatar && avatar.parentNode) {
-      avatar.parentNode.insertBefore(levelBadge, avatar);
-    }
+    if (!avatar) return;
 
-    // Petit effet d’apparition
-    levelBadge.style.opacity = 0;
-    setTimeout(() => (levelBadge.style.opacity = 1), 100);
+    // Supprime tout badge existant
+    let capsule = document.querySelector('[data-global-capsule]');
+    if (capsule) capsule.remove();
+
+    // Crée une capsule englobant avatar + niveau
+    capsule = document.createElement('div');
+    capsule.dataset.globalCapsule = true;
+    capsule.className = 'global-capsule';
+    capsule.innerHTML = `
+      <span class="global-level">Niv. ${level}</span>
+      <div class="global-avatar">${avatar.textContent}</div>
+    `;
+
+    // Remplace l’ancien avatar visuel
+    avatar.replaceWith(capsule);
   }
 
   /* --------------------- LANDING --------------------- */
@@ -516,10 +514,10 @@ const Veloskill = (() => {
       .maybeSingle();
 
     const oldTotal = existing?.total_xp || 0;
+    const oldLevel = existing?.level || 1;
     const newTotal = oldTotal + gainedXp;
     const newLevel = computeGlobalLevel(newTotal);
 
-    // Sauvegarde
     await supabaseClient
       .from('global_xp')
       .upsert({
@@ -530,6 +528,16 @@ const Veloskill = (() => {
       });
 
     console.log(`→ XP global +${gainedXp} (${newTotal} total, niveau ${newLevel})`);
+
+    // 🔔 Notification automatique
+    if (newLevel > oldLevel) {
+      Veloskill.showToast({
+        type: 'success',
+        title: `🎉 Niveau global ${newLevel} atteint !`,
+        message: 'Bravo, ta progression générale s’accélère 🚴‍♂️'
+      });
+    }
+
     return { gainedXp, totalXp: newTotal, level: newLevel };
   }
 
