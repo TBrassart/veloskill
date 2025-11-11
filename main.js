@@ -220,6 +220,9 @@ const Veloskill = (() => {
 
           // 🔄 Étape 2 : recalcul des XP immédiatement après la sync
           const newXp = await Veloskill.calculateXpFromActivities(user.id);
+          
+          // ➕ mise à jour de la progression Boss
+          await updateBossProgress(user.id);
 
           const oldXp = await getOrComputeUserXp(user.id);
           const oldLevel = computeLevelFromXp(oldXp.endurance);
@@ -975,6 +978,7 @@ const Veloskill = (() => {
   /* --------------------- MODULE BOSS --------------------- */
 
   async function initBoss() {
+    await updateBossProgress(user.id);
     const sessionData = await loadSessionAndProfile();
     const user = sessionData?.user;
     const profile = sessionData?.profile;
@@ -1143,6 +1147,248 @@ const Veloskill = (() => {
       default: return '🔥 En cours';
     }
   }
+
+  /* --------------------- MISE À JOUR DES BOSS --------------------- */
+
+  /**
+   * Met à jour la progression du joueur sur les boss actifs
+   * en fonction de ses activités récentes.
+   */
+  async function updateBossProgress(userId) {
+  const global = await fetchGlobalXp(userId);
+
+  const { data: bosses, error: bossErr } = await supabaseClient
+    .from('bosses')
+    .select('*')
+    .eq('actif', true);
+
+  if (bossErr || !bosses?.length) {
+    console.warn('Aucun boss actif trouvé.');
+    return;
+  }
+
+  const activities = await fetchUserActivities(userId);
+  if (!activities?.length) return;
+
+  const now = new Date();
+
+  for (const boss of bosses) {
+    if (global.level < boss.level_required) continue;
+
+    const { data: existing } = await supabaseClient
+      .from('boss_attempts')
+      .select('*')
+      .eq('user_id', userId)
+      .eq('boss_id', boss.id)
+      .maybeSingle();
+
+    // 1️⃣ Calcul du score selon le type
+    let score = 0;
+    if (boss.type === 'distance') {
+      score = activities.reduce((sum, a) => sum + (a.distance || 0), 0);
+    } else if (boss.type === 'elevation') {
+      score = activities.reduce((sum, a) => sum + (a.elevation || 0), 0);
+    } else if (boss.type === 'time') {
+      score = activities.reduce((sum, a) => sum + (a.duration || 0) / 60, 0); // s → min
+    }
+
+    // 2️⃣ Statut
+    let newStatut = existing?.statut || 'en_cours';
+
+    // Boss event avec dates → expire possible
+    const hasTimeLimit = boss.start_at && boss.end_at;
+    if (hasTimeLimit) {
+      const start = new Date(boss.start_at);
+      const end = new Date(boss.end_at);
+      if (now < start && newStatut !== 'reussi') newStatut = 'en_cours';
+      if (now > end && newStatut !== 'reussi') newStatut = 'expire';
+    }
+
+    // Condition de réussite
+    if (score >= boss.hp_target) {
+      newStatut = 'reussi';
+    }
+
+    const bestScore = existing?.best_score
+      ? Math.max(existing.best_score, score)
+      : score;
+
+    const payload = {
+      user_id: userId,
+      boss_id: boss.id,
+      score,
+      best_score: bestScore,
+      statut: newStatut,
+      updated_at: new Date().toISOString(),
+      details_json: {
+        type: boss.type,
+        computed_at: new Date().toISOString()
+      }
+    };
+
+    const previousStatut = existing?.statut;
+
+    const { error: upErr } = await supabaseClient
+      .from('boss_attempts')
+      .upsert(payload, { onConflict: 'user_id,boss_id' });
+
+    if (upErr) {
+      console.error('Erreur updateBossProgress:', upErr);
+      continue;
+    }
+
+    // 3️⃣ Réactions aux transitions
+
+    // Passage à reussi : on applique VRAIMENT les récompenses
+    if (newStatut === 'reussi' && previousStatut !== 'reussi') {
+      Veloskill.showToast({
+        type: 'success',
+        title: `🏆 ${boss.nom} vaincu !`,
+        message: `Tu as terminé le défi inspiré de ${boss.cycliste || boss.nom}.`
+      });
+      await applyBossRewards(userId, boss);
+    }
+
+    // Passage à expire (uniquement pour boss event)
+    if (newStatut === 'expire' && previousStatut !== 'expire') {
+      Veloskill.showToast({
+        type: 'info',
+        title: `⌛ ${boss.nom} expiré`,
+        message: `L’événement est terminé. Tu pourras retenter un prochain défi spécial.`
+      });
+    }
+  }
+}
+
+  /* --------------------- RÉCOMPENSES BOSS --------------------- */
+
+  /**
+   * Applique les récompenses d'un boss fraichement vaincu :
+   * - Bonus d'XP global (si présent dans boss.recompense : ex "+1000 XP")
+   * - Badge unique lié au boss
+   */
+  async function applyBossRewards(userId, boss) {
+    try {
+      await applyBossXpReward(userId, boss);
+      await awardBossBadgeIfNeeded(userId, boss);
+    } catch (e) {
+      console.error('Erreur applyBossRewards:', e);
+    }
+  }
+
+  /**
+   * Cherche un pattern du type "+1000 XP" dans bosses.recompense
+   * et l'ajoute réellement à global_xp.
+   */
+  async function applyBossXpReward(userId, boss) {
+    if (!boss.recompense) return;
+
+    const match = boss.recompense.match(/\+(\d+)\s*XP/i);
+    if (!match) return;
+
+    const bonus = parseInt(match[1], 10);
+    if (!bonus || bonus <= 0) return;
+
+    // Récupère l'existant
+    const { data: existing, error } = await supabaseClient
+      .from('global_xp')
+      .select('total_xp, level')
+      .eq('user_id', userId)
+      .maybeSingle();
+
+    const oldTotal = existing?.total_xp || 0;
+    const newTotal = oldTotal + bonus;
+    const newLevel = computeGlobalLevel(newTotal);
+
+    const { error: upErr } = await supabaseClient
+      .from('global_xp')
+      .upsert({
+        user_id: userId,
+        total_xp: newTotal,
+        level: newLevel,
+        last_update: new Date().toISOString()
+      });
+
+    if (upErr) {
+      console.error('Erreur upsert global_xp bonus boss:', upErr);
+      return;
+    }
+
+    Veloskill.showToast({
+      type: 'success',
+      title: `Récompense boss`,
+      message: `+${bonus} XP global grâce à ${boss.nom} 🏆`
+    });
+  }
+
+  /**
+   * Crée un badge lié à la défaite d'un boss si non déjà présent.
+   * Hypothèse : table "user_badges" utilisée par fetchUserBadges.
+   */
+  async function awardBossBadgeIfNeeded(userId, boss) {
+  const badgeSlug = `boss-${boss.slug}`;
+  const badgeTitle = `Boss vaincu : ${boss.nom}`;
+  const badgeDesc = `Tu as vaincu le boss inspiré de ${boss.cycliste || boss.nom}.`;
+
+  // 1️⃣ Vérifie ou crée le badge global
+  const { data: badge } = await supabaseClient
+    .from('badges')
+    .select('id')
+    .eq('slug', badgeSlug)
+    .maybeSingle();
+
+  let badgeId = badge?.id;
+
+  if (!badgeId) {
+    const { data: created, error: createErr } = await supabaseClient
+      .from('badges')
+      .insert({
+        slug: badgeSlug,
+        title: badgeTitle,
+        description: badgeDesc,
+        icon: '🏆',
+        type: 'boss'
+      })
+      .select('id')
+      .single();
+
+    if (createErr) {
+      console.error('Erreur création badge global:', createErr);
+      return;
+    }
+
+    badgeId = created.id;
+  }
+
+  // 2️⃣ Vérifie si l'utilisateur l'a déjà
+  const { data: existing } = await supabaseClient
+    .from('user_badges')
+    .select('id')
+    .eq('user_id', userId)
+    .eq('badge_id', badgeId)
+    .maybeSingle();
+
+  if (existing) return; // déjà obtenu
+
+  // 3️⃣ Associe le badge à l'utilisateur
+  const { error: insertErr } = await supabaseClient
+    .from('user_badges')
+    .insert({
+      user_id: userId,
+      badge_id: badgeId
+    });
+
+  if (insertErr) {
+    console.error('Erreur création badge utilisateur:', insertErr);
+    return;
+  }
+
+  Veloskill.showToast({
+    type: 'success',
+    title: '🏅 Nouveau badge débloqué',
+    message: badgeTitle
+  });
+}
 
   /* --------------------- INIT GLOBAL --------------------- */
   async function init() {
