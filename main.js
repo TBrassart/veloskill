@@ -338,7 +338,7 @@ function renderMasteries(masteries, userLevels) {
 
     const level = userLevels[m.id] || 0;
     const max = m.max_level || 5;
-    const cond = JSON.parse(m.condition || '{}');
+    const cond = typeof m.condition === 'string' ? JSON.parse(m.condition || '{}') : m.condition || {};
     const thresholds = cond.thresholds || [];
 
     // Valeur actuelle & prochain seuil
@@ -381,7 +381,7 @@ function openMasteryPopup(mastery, level, max, color) {
   const closeBtn = document.querySelector('[data-popup-close]');
   if (!popup || !content) return;
 
-  const cond = JSON.parse(mastery.condition || '{}');
+  const cond = typeof mastery.condition === 'string' ? JSON.parse(mastery.condition || '{}') : mastery.condition || {};
   const thresholds = cond.thresholds || [];
   const metricName = cond.metric ? cond.metric.replace('_', ' ') : 'valeur';
   const next = thresholds[level] || null;
