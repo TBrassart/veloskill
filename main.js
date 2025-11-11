@@ -339,27 +339,38 @@ function renderMasteries(masteries, userLevels) {
     if (!grid) continue;
 
     const level = userLevels[m.id] || 0;
-    const max = m.max_level || 5;
-    const cond = typeof m.condition === 'string' ? JSON.parse(m.condition || '{}') : m.condition || {};
-    const thresholds = cond.thresholds || [];
+    const max = m.max_level || 0;
 
-    // Valeur actuelle & prochain seuil
-    const current = level > 0 ? thresholds[level - 1] : 0;
-    const next = thresholds[level] || null;
-    const pct = Math.min(100, (level / max) * 100);
+    const cond = typeof m.condition === 'string'
+      ? (m.condition ? JSON.parse(m.condition) : {})
+      : (m.condition || {});
+
+    const thresholds = Array.isArray(cond.thresholds) ? cond.thresholds : [];
+    const metricName = cond.metric ? cond.metric.replace(/_/g, ' ') : null;
+
+    // % d’avancement (par rapport au nb de paliers)
+    const totalLevels = max || thresholds.length || 1;
+    const pct = Math.min(100, (level / totalLevels) * 100);
 
     const card = document.createElement('div');
     card.className = 'mastery-card';
     card.style.setProperty('--color', colors[m.category] || '#42c779');
 
-    // Texte de progression
+    // Texte "prochain niveau"
     let progressText = '';
-    if (level >= max) {
-      progressText = `✅ Maîtrise complète`;
-    } else if (next) {
-      progressText = `Prochain niveau : ${next.toLocaleString()} ${cond.metric.replace('_', ' ')} (actuel : ${current.toLocaleString()})`;
+
+    if (!thresholds.length || !metricName) {
+      // Maîtrises sans metric/thresholds utilisables → pas de crash, message neutre
+      if (level >= totalLevels && totalLevels > 0) {
+        progressText = '✅ Maîtrise complète';
+      } else {
+        progressText = 'Progression basée sur tes activités.';
+      }
+    } else if (level >= thresholds.length || (max && level >= max)) {
+      progressText = '✅ Maîtrise complète';
     } else {
-      progressText = `Aucun seuil défini`;
+      const next = thresholds[level];
+      progressText = `Prochain niveau : ${next.toLocaleString()} ${metricName}`;
     }
 
     card.innerHTML = `
@@ -368,14 +379,18 @@ function renderMasteries(masteries, userLevels) {
       <div class="mastery-level">
         <div class="mastery-level-bar" style="width:${pct}%"></div>
       </div>
-      <div class="mastery-level-text">Niveau ${level}/${max}</div>
+      <div class="mastery-level-text">Niveau ${level}/${totalLevels}</div>
       <div class="mastery-next">${progressText}</div>
     `;
 
-    card.addEventListener('click', () => openMasteryPopup(m, level, max, colors[m.category]));
+    card.addEventListener('click', () =>
+      openMasteryPopup(m, level, totalLevels, colors[m.category] || '#42c779')
+    );
+
     grid.appendChild(card);
   }
 }
+
 
 function openMasteryPopup(mastery, level, max, color) {
   const popup = document.querySelector('[data-mastery-popup]');
@@ -383,26 +398,35 @@ function openMasteryPopup(mastery, level, max, color) {
   const closeBtn = document.querySelector('[data-popup-close]');
   if (!popup || !content) return;
 
-  const cond = typeof mastery.condition === 'string' ? JSON.parse(mastery.condition || '{}') : mastery.condition || {};
-  const thresholds = cond.thresholds || [];
-  const metricName = cond.metric ? cond.metric.replace('_', ' ') : 'valeur';
-  const next = thresholds[level] || null;
-  const current = thresholds[level - 1] || 0;
-  const pct = Math.min(100, (level / (mastery.max_level || thresholds.length || 1)) * 100);
+  const cond = typeof mastery.condition === 'string'
+    ? (mastery.condition ? JSON.parse(mastery.condition) : {})
+    : (mastery.condition || {});
 
-  // Texte de progression
+  const thresholds = Array.isArray(cond.thresholds) ? cond.thresholds : [];
+  const metricName = cond.metric ? cond.metric.replace(/_/g, ' ') : 'progression';
+  const totalLevels = max || thresholds.length || 1;
+
+  const next = thresholds[level] || null;
+  const pct = Math.min(100, (level / totalLevels) * 100);
+
   let progressText = '';
-  if (level >= (mastery.max_level || thresholds.length)) {
-    progressText = `✅ Maîtrise complète — tu as atteint le dernier niveau.`;
+
+  if (!thresholds.length || !cond.metric) {
+    if (level >= totalLevels && totalLevels > 0) {
+      progressText = '✅ Maîtrise complète.';
+    } else {
+      progressText = 'Progression calculée automatiquement à partir de tes activités.';
+    }
+  } else if (level >= thresholds.length || level >= totalLevels) {
+    progressText = '✅ Maîtrise complète — tu as atteint le dernier niveau.';
   } else if (next) {
     progressText = `Prochain palier : <strong>${next.toLocaleString()} ${metricName}</strong>`;
   } else {
-    progressText = `Aucun seuil défini pour cette maîtrise.`;
+    progressText = 'Aucun palier supplémentaire défini.';
   }
 
-  // Liste des seuils
   let list = '';
-  if (thresholds.length) {
+  if (thresholds.length && cond.metric) {
     list = `
       <ul class="mastery-thresholds">
         ${thresholds
@@ -423,7 +447,7 @@ function openMasteryPopup(mastery, level, max, color) {
       <div class="mastery-progress-bar">
         <div class="mastery-progress-fill" style="width:${pct}%;background:${color};"></div>
       </div>
-      <div class="mastery-progress-text">Niveau ${level}/${mastery.max_level || thresholds.length}</div>
+      <div class="mastery-progress-text">Niveau ${level}/${totalLevels}</div>
       <div class="mastery-progress-next">${progressText}</div>
       ${list}
     </div>
@@ -435,7 +459,6 @@ function openMasteryPopup(mastery, level, max, color) {
     if (e.target === popup) popup.classList.remove('show');
   });
 }
-
 
 function capitalize(str = '') {
   return str.charAt(0).toUpperCase() + str.slice(1);
