@@ -93,6 +93,41 @@ const Veloskill = (() => {
         window.location.href = 'index.html';
       });
     }
+    // 🎯 Niveau global dans le header
+    addGlobalLevelToHeader();
+  }
+
+  async function addGlobalLevelToHeader() {
+    const header = document.querySelector('header');
+    if (!header || !currentUser) return;
+
+    const { data, error } = await supabaseClient
+      .from('global_xp')
+      .select('total_xp, level')
+      .eq('user_id', currentUser.id)
+      .maybeSingle();
+
+    const level = data?.level || 1;
+
+    // Supprime s’il existe déjà
+    let levelBadge = document.querySelector('[data-global-level]');
+    if (levelBadge) levelBadge.remove();
+
+    // Crée le badge visuel
+    levelBadge = document.createElement('div');
+    levelBadge.dataset.globalLevel = level;
+    levelBadge.className = 'global-level-badge';
+    levelBadge.innerHTML = `🌍 Niv. ${level}`;
+
+    // L’insère juste à côté de l’avatar
+    const avatar = document.querySelector('[data-user-avatar]');
+    if (avatar && avatar.parentNode) {
+      avatar.parentNode.insertBefore(levelBadge, avatar.nextSibling);
+    }
+
+    // Petit effet d’apparition
+    levelBadge.style.opacity = 0;
+    setTimeout(() => (levelBadge.style.opacity = 1), 100);
   }
 
   /* --------------------- LANDING --------------------- */
@@ -615,8 +650,17 @@ const Veloskill = (() => {
       const inLevelTotal = nextLevelXp - baseXp;
       const percent = Math.min(100, Math.max(0, (inLevel / inLevelTotal) * 100));
 
+      const tooltips = {
+        endurance: "🌿 Endurance : influencée par la distance parcourue, la durée et les longues sorties.",
+        explosivity: "⚡ Explosivité : augmente avec la puissance moyenne et le dénivelé positif.",
+        mental: "🧠 Mental : progresse avec la durée totale, la régularité et les sorties longues, surtout le week-end.",
+        strategy: "🎯 Stratégie : dépend de la vitesse moyenne, de la variété et de la gestion d’effort."
+      };
+
       const card = document.createElement('div');
       card.className = 'xp-card';
+      card.title = tooltips[axis.key];
+
       card.innerHTML = `
         <div class="xp-header">
           <div>${axis.label}</div>
