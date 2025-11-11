@@ -264,6 +264,23 @@ const Veloskill = (() => {
     }
   }
 
+async function fetchUserUnlocks(userId) {
+  // Lit les compétences déjà validées dans user_skills_progress
+  const { data, error } = await supabaseClient
+    .from('user_skills_progress')
+    .select('skill_id, is_met')
+    .eq('user_id', userId)
+    .eq('is_met', true);
+
+  if (error) {
+    console.error('Erreur fetchUserUnlocks:', error);
+    return [];
+  }
+
+  return (data || []).map(row => row.skill_id);
+}
+
+
 /* ===========================================================
    🌳 MODULE COMPÉTENCES — VERSION COMPLÈTE ET FONCTIONNELLE
    =========================================================== */
@@ -273,14 +290,16 @@ async function initArbre() {
   const user = sessionData?.user;
   if (!user) return (window.location.href = 'index.html');
 
-  const [skills, unlockedIds, xp] = await Promise.all([
+  let [skills, unlockedIds, xp] = await Promise.all([
     fetchAllSkills(),
     fetchUserUnlocks(user.id),
     getOrComputeUserXp(user.id)
   ]);
 
-  const trees = buildSkillTrees(skills);
+  // 🔁 met à jour user_skills_progress en fonction de l’historique
+  unlockedIds = await updateUnlockedSkillsFromHistory(user.id, skills, unlockedIds, xp);
 
+  const trees = buildSkillTrees(skills);
   renderArbreOverview(trees, unlockedIds, xp, user.id);
 }
 
