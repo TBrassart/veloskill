@@ -342,7 +342,7 @@ async function renderSkillTrees(trees, unlockedIds, xp, userId) {
 
 /** Génère les nœuds reliés verticalement */
 async function renderSkillTreeRecursive(skills, unlockedIds, color, xp, userId, parentId = null, depth = 1) {
-  const nodes = skills.filter(s => s.parent_id === parentId);
+  const nodes = skills.filter(s => (parentId === null ? !s.parent_id : s.parent_id === parentId));
   if (!nodes.length) return null;
 
   const layer = document.createElement('div');
@@ -599,11 +599,43 @@ async function updateUnlockedSkillsFromHistory(userId, skills, unlockedIds, user
   const newlyUnlocked = [];
 
   for (const skill of skills) {
-    // Déjà débloquée ?
+    // 🔹 Ignore si déjà débloquée
     if (unlockedIds.includes(skill.id)) continue;
 
-    const canUnlock = await checkSkillAvailable(skill, unlockedIds, userXp, userId);
+    // 🔹 Vérifie le cache de progression
+    const { data: progress } = await supabaseClient
+      .from('user_skills_progress')
+      .select('is_met')
+      .eq('user_id', userId)
+      .eq('skill_id', skill.id)
+      .maybeSingle();
+
+    const cachedMet = progress?.is_met;
+
+    // 🔍 Si pas en cache ou ancien résultat faux → recalcul
+    const canUnlock = cachedMet || await checkSkillAvailable(skill, unlockedIds, userXp, userId);
+
+    // 🧠 Met à jour le cache
+    await supabaseClient
+      .from('user_skills_progress')
+      .upsert({
+        user_id: userId,
+        skill_id: skill.id,
+        last_checked: new Date().toISOString(),
+        is_met: canUnlock
+      });
+
     if (canUnlock) {
+      // Déjà dans user_skills ?
+      const { data: already } = await supabaseClient
+        .from('user_skills')
+        .select('id')
+        .eq('user_id', userId)
+        .eq('skill_id', skill.id)
+        .maybeSingle();
+
+      if (already) continue; // déjà présent → ne pas toaster
+
       newlyUnlocked.push(skill.id);
       unlockedIds.push(skill.id);
 
@@ -620,6 +652,7 @@ async function updateUnlockedSkillsFromHistory(userId, skills, unlockedIds, user
       });
     }
   }
+
 
   if (!newlyUnlocked.length) {
     console.log('✅ Aucune nouvelle compétence débloquée via historique.');
