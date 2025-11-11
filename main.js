@@ -731,7 +731,7 @@ async function updateUserMasteries(userId) {
       total_xp: data.total_xp || 0,
       level: data.level || computeGlobalLevel(data.total_xp || 0)
     };
-  }
+  } //TEST
 
   /* --------------------- RÉCUPÉRATION XP UTILISATEUR --------------------- */
   async function getOrComputeUserXp(userId) {
