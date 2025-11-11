@@ -782,6 +782,11 @@ body.light-theme input {
   color: #5ef38c;
 }
 
+header [data-user-avatar] {
+  display: inline-flex;
+  vertical-align: middle;
+}
+
 .global-level-badge {
   display: inline-flex;
   align-items: center;
@@ -797,6 +802,13 @@ body.light-theme input {
   transition: opacity 0.3s ease, transform 0.3s ease;
   cursor: default;
   box-shadow: 0 0 8px rgba(66, 199, 121, 0.4);
+  vertical-align: middle; /* 👈 clé ici */
+}
+
+header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
 }
 
 .global-level-badge:hover {
