@@ -122,7 +122,7 @@ const Veloskill = (() => {
     // L’insère juste à côté de l’avatar
     const avatar = document.querySelector('[data-user-avatar]');
     if (avatar && avatar.parentNode) {
-      avatar.parentNode.insertBefore(levelBadge, avatar.nextSibling);
+      avatar.parentNode.insertBefore(levelBadge, avatar);
     }
 
     // Petit effet d’apparition
@@ -184,10 +184,6 @@ const Veloskill = (() => {
         strategy: 300
       });
       renderDashboardBossPreview();
-      renderGlobalXpCard({
-        total_xp: 4200,
-        level: computeGlobalLevel(4200)
-      });
       showToast({
         type: 'info',
         title: 'Mode démo',
@@ -207,7 +203,6 @@ const Veloskill = (() => {
 
     // 🔍 Récupère et affiche le niveau global
     const globalXp = await fetchGlobalXp(user.id);
-    renderGlobalXpCard(globalXp);
 
     renderDashboardBossPreview();
 
@@ -559,27 +554,6 @@ const Veloskill = (() => {
       level: data.level || computeGlobalLevel(data.total_xp || 0)
     };
   }
-
-  function renderGlobalXpCard(globalXp) {
-    const container = document.querySelector('[data-xp-grid]');
-    if (!container) return;
-
-    const card = document.createElement('div');
-    card.className = 'xp-card xp-global';
-    card.innerHTML = `
-      <div class="xp-header">
-        <div>🌍 Niveau global</div>
-        <div>Niv. ${globalXp.level}</div>
-      </div>
-      <div class="xp-value">${globalXp.total_xp} XP</div>
-      <div class="xp-next">
-        Chaque sortie, badge & boss contribueront à ce niveau général.
-      </div>
-    `;
-    // tu peux utiliser prepend() pour l'afficher en premier, ou appendChild() pour le mettre à la fin
-    container.prepend(card);
-  }
-
 
   /* --------------------- RÉCUPÉRATION XP UTILISATEUR --------------------- */
   async function getOrComputeUserXp(userId) {

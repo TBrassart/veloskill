@@ -783,16 +783,32 @@ body.light-theme input {
 }
 
 .global-level-badge {
-  display: inline-block;
-  margin-left: 10px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  margin-right: 10px;
   padding: 4px 10px;
   border-radius: 999px;
   background: linear-gradient(135deg, #42c779, #5b74ff);
   color: white;
   font-weight: 600;
   font-size: 0.9rem;
-  transition: opacity 0.3s ease;
+  transition: opacity 0.3s ease, transform 0.3s ease;
   cursor: default;
+  box-shadow: 0 0 8px rgba(66, 199, 121, 0.4);
+}
+
+.global-level-badge:hover {
+  transform: scale(1.05);
+}
+
+@media (max-width: 600px) {
+  .global-level-badge {
+    font-size: 0.8rem;
+    padding: 3px 8px;
+    gap: 4px;
+  }
 }
 
 .xp-card {
