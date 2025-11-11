@@ -1179,110 +1179,142 @@ const Veloskill = (() => {
    * en fonction de ses activités récentes.
    */
   async function updateBossProgress(userId) {
-  const global = await fetchGlobalXp(userId);
+    const global = await fetchGlobalXp(userId);
 
-  const { data: bosses, error: bossErr } = await supabaseClient
-    .from('bosses')
-    .select('*')
-    .eq('actif', true);
-
-  if (bossErr || !bosses?.length) {
-    console.warn('Aucun boss actif trouvé.');
-    return;
-  }
-
-  const activities = await fetchUserActivities(userId);
-  if (!activities?.length) return;
-
-  const now = new Date();
-
-  for (const boss of bosses) {
-    if (global.level < boss.level_required) continue;
-
-    const { data: existing } = await supabaseClient
-      .from('boss_attempts')
+    const { data: bosses, error: bossErr } = await supabaseClient
+      .from('bosses')
       .select('*')
-      .eq('user_id', userId)
-      .eq('boss_id', boss.id)
-      .maybeSingle();
+      .eq('actif', true);
 
-    // 1️⃣ Calcul du score selon le type
-    let score = 0;
-    if (boss.type === 'distance') {
-      score = activities.reduce((sum, a) => sum + (a.distance || 0), 0);
-    } else if (boss.type === 'elevation') {
-      score = activities.reduce((sum, a) => sum + (a.elevation || 0), 0);
-    } else if (boss.type === 'time') {
-      score = activities.reduce((sum, a) => sum + (a.duration || 0) / 60, 0); // s → min
+    if (bossErr || !bosses?.length) {
+      console.warn('Aucun boss actif trouvé.');
+      return;
     }
 
-    // 2️⃣ Statut
-    let newStatut = existing?.statut || 'en_cours';
+    const allActivities = await fetchUserActivities(userId);
+    if (!allActivities?.length) return;
 
-    // Boss event avec dates → expire possible
-    const hasTimeLimit = boss.start_at && boss.end_at;
-    if (hasTimeLimit) {
-      const start = new Date(boss.start_at);
-      const end = new Date(boss.end_at);
-      if (now < start && newStatut !== 'reussi') newStatut = 'en_cours';
-      if (now > end && newStatut !== 'reussi') newStatut = 'expire';
-    }
+    const now = new Date();
 
-    // Condition de réussite
-    if (score >= boss.hp_target) {
-      newStatut = 'reussi';
-    }
+    for (const boss of bosses) {
+      // 🧱 1️⃣ On ne suit que les boss dont le niveau requis est atteint
+      if (global.level < boss.level_required) continue;
 
-    const bestScore = existing?.best_score
-      ? Math.max(existing.best_score, score)
-      : score;
+      const { data: existing } = await supabaseClient
+        .from('boss_attempts')
+        .select('*')
+        .eq('user_id', userId)
+        .eq('boss_id', boss.id)
+        .maybeSingle();
 
-    const payload = {
-      user_id: userId,
-      boss_id: boss.id,
-      score,
-      best_score: bestScore,
-      statut: newStatut,
-      updated_at: new Date().toISOString(),
-      details_json: {
-        type: boss.type,
-        computed_at: new Date().toISOString()
+      // ⚙️ 2️⃣ Déterminer la date de début
+      let startedAt = existing?.started_at
+        ? new Date(existing.started_at)
+        : null;
+
+      if (!startedAt) {
+        // Premier déblocage → on crée une date de début maintenant
+        startedAt = new Date();
       }
-    };
 
-    const previousStatut = existing?.statut;
-
-    const { error: upErr } = await supabaseClient
-      .from('boss_attempts')
-      .upsert(payload, { onConflict: 'user_id,boss_id' });
-
-    if (upErr) {
-      console.error('Erreur updateBossProgress:', upErr);
-      continue;
-    }
-
-    // 3️⃣ Réactions aux transitions
-
-    // Passage à reussi : on applique VRAIMENT les récompenses
-    if (newStatut === 'reussi' && previousStatut !== 'reussi') {
-      Veloskill.showToast({
-        type: 'success',
-        title: `🏆 ${boss.nom} vaincu !`,
-        message: `Tu as terminé le défi inspiré de ${boss.cycliste || boss.nom}.`
+      // ⚙️ 3️⃣ Filtrer les activités effectuées après le déblocage
+      const activities = allActivities.filter((a) => {
+        if (!a.date) return false;
+        const actDate = new Date(a.date);
+        return actDate >= startedAt;
       });
-      await applyBossRewards(userId, boss);
-    }
 
-    // Passage à expire (uniquement pour boss event)
-    if (newStatut === 'expire' && previousStatut !== 'expire') {
-      Veloskill.showToast({
-        type: 'info',
-        title: `⌛ ${boss.nom} expiré`,
-        message: `L’événement est terminé. Tu pourras retenter un prochain défi spécial.`
-      });
+      if (!activities.length) {
+        // Pas d’activités depuis le déblocage → pas de score
+        if (!existing) {
+          // Crée la tentative si elle n'existait pas encore
+          await supabaseClient.from('boss_attempts').insert({
+            user_id: userId,
+            boss_id: boss.id,
+            statut: 'en_cours',
+            score: 0,
+            best_score: 0,
+            started_at: startedAt.toISOString(),
+            updated_at: new Date().toISOString(),
+            details_json: { type: boss.type, info: 'début de tentative' }
+          });
+        }
+        continue;
+      }
+
+      // ⚙️ 4️⃣ Calcul du score avec seulement les activités postérieures à started_at
+      let score = 0;
+      if (boss.type === 'distance') {
+        score = activities.reduce((sum, a) => sum + (a.distance || 0), 0);
+      } else if (boss.type === 'elevation') {
+        score = activities.reduce((sum, a) => sum + (a.elevation || 0), 0);
+      } else if (boss.type === 'time') {
+        score = activities.reduce((sum, a) => sum + (a.duration || 0) / 60, 0); // s → min
+      }
+
+      // ⚙️ 5️⃣ Gestion du statut
+      let newStatut = existing?.statut || 'en_cours';
+
+      const hasTimeLimit = boss.start_at && boss.end_at;
+      if (hasTimeLimit) {
+        const start = new Date(boss.start_at);
+        const end = new Date(boss.end_at);
+        if (now < start && newStatut !== 'reussi') newStatut = 'en_cours';
+        if (now > end && newStatut !== 'reussi') newStatut = 'expire';
+      }
+
+      if (score >= boss.hp_target) {
+        newStatut = 'reussi';
+      }
+
+      const bestScore = existing?.best_score
+        ? Math.max(existing.best_score, score)
+        : score;
+
+      const payload = {
+        user_id: userId,
+        boss_id: boss.id,
+        score,
+        best_score: bestScore,
+        statut: newStatut,
+        started_at: startedAt.toISOString(),
+        updated_at: new Date().toISOString(),
+        details_json: {
+          type: boss.type,
+          computed_at: new Date().toISOString()
+        }
+      };
+
+      const previousStatut = existing?.statut;
+
+      const { error: upErr } = await supabaseClient
+        .from('boss_attempts')
+        .upsert(payload, { onConflict: 'user_id,boss_id' });
+
+      if (upErr) {
+        console.error('Erreur updateBossProgress:', upErr);
+        continue;
+      }
+
+      // 🎉 6️⃣ Transitions
+      if (newStatut === 'reussi' && previousStatut !== 'reussi') {
+        Veloskill.showToast({
+          type: 'success',
+          title: `🏆 ${boss.nom} vaincu !`,
+          message: `Tu as vaincu ${boss.cycliste || boss.nom} après son déblocage.`
+        });
+        await applyBossRewards(userId, boss);
+      }
+
+      if (newStatut === 'expire' && previousStatut !== 'expire') {
+        Veloskill.showToast({
+          type: 'info',
+          title: `⌛ ${boss.nom} expiré`,
+          message: `L’événement est terminé. Tu pourras retenter un prochain défi spécial.`
+        });
+      }
     }
   }
-}
 
   /* --------------------- RÉCOMPENSES BOSS --------------------- */
 
