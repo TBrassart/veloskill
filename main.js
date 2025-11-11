@@ -273,21 +273,73 @@ async function initArbre() {
   const user = sessionData?.user;
   if (!user) return (window.location.href = 'index.html');
 
-  // 1️⃣ Récupère tout
-  const [skills, unlocks, xp] = await Promise.all([
+  const [skills, unlockedIds, xp] = await Promise.all([
     fetchAllSkills(),
     fetchUserUnlocks(user.id),
     getOrComputeUserXp(user.id)
   ]);
 
-  // 2️⃣ Vérifie les déblocages rétroactifs
-  const updatedUnlocks = await updateUnlockedSkillsFromHistory(user.id, skills, unlocks, xp);
-
-  // 3️⃣ Construit et affiche
   const trees = buildSkillTrees(skills);
-  await renderSkillTrees(trees, updatedUnlocks, xp, user.id);
+
+  renderArbreOverview(trees, unlockedIds, xp, user.id);
 }
 
+/** Vue principale avec les 5 blocs */
+function renderArbreOverview(trees, unlockedIds, xp, userId) {
+  const overview = document.querySelector('[data-arbre-overview]');
+  const container = document.querySelector('[data-arbre-container]');
+  const btnRetour = document.querySelector('[data-btn-retour]');
+
+  overview.innerHTML = '';
+  container.hidden = true;
+  btnRetour.hidden = true;
+  overview.hidden = false;
+
+  const colors = {
+    endurance: '#42c779',
+    explosivity: '#f04a4a',
+    mental: '#5b74ff',
+    strategy: '#f2b01e',
+    special: '#9a5df5'
+  };
+
+  const icons = {
+    endurance: '🌿',
+    explosivity: '⚡',
+    mental: '🧠',
+    strategy: '🎯',
+    special: '💜'
+  };
+
+  for (const [type, list] of Object.entries(trees)) {
+    const unlockedCount = list.filter(s => unlockedIds.includes(s.id)).length;
+    const total = list.length;
+
+    const block = document.createElement('div');
+    block.className = `arbre-block ${type}`;
+    block.style.color = colors[type];
+    block.innerHTML = `
+      <div class="icon">${icons[type]}</div>
+      <div class="title">${capitalize(type)}</div>
+      <div class="progress">${unlockedCount}/${total} débloquées</div>
+    `;
+
+    block.addEventListener('click', async () => {
+      overview.hidden = true;
+      container.hidden = false;
+      btnRetour.hidden = false;
+      await renderSkillTreeRecursive(list, unlockedIds, colors[type], xp, userId, null, 1);
+    });
+
+    overview.appendChild(block);
+  }
+
+  btnRetour.addEventListener('click', () => {
+    container.innerHTML = '';
+    overview.hidden = false;
+    btnRetour.hidden = true;
+  });
+}
 
 /* -----------------------------------------------------------
    🔧 Construction et rendu des arbres
@@ -342,6 +394,11 @@ async function renderSkillTrees(trees, unlockedIds, xp, userId) {
 
 /** Génère les nœuds reliés verticalement */
 async function renderSkillTreeRecursive(skills, unlockedIds, color, xp, userId, parentId = null, depth = 1) {
+  const container = document.querySelector('[data-arbre-container]');
+  if (!container) return;
+
+  if (depth === 1) container.innerHTML = ''; // reset lors de l'ouverture
+
   const nodes = skills.filter(s => (parentId === null ? !s.parent_id : s.parent_id === parentId));
   if (!nodes.length) return null;
 
@@ -363,14 +420,13 @@ async function renderSkillTreeRecursive(skills, unlockedIds, color, xp, userId, 
     node.addEventListener('click', () => showSkillPopup(skill, state));
     nodeWrapper.appendChild(node);
 
-    // Si l’arbre a des enfants, on les affiche récursivement
     const childrenLayer = await renderSkillTreeRecursive(skills, unlockedIds, color, xp, userId, skill.id, depth + 1);
     if (childrenLayer) nodeWrapper.appendChild(childrenLayer);
 
     layer.appendChild(nodeWrapper);
   }
 
-  return layer;
+  container.appendChild(layer);
 }
 
 /* -----------------------------------------------------------
@@ -594,35 +650,36 @@ async function unlockSkill(skillId) {
    🔁 Mise à jour rétroactive des compétences
 ----------------------------------------------------------- */
 
+/* -----------------------------------------------------------
+   🔁 Mise à jour rétroactive des compétences (version unifiée)
+----------------------------------------------------------- */
 async function updateUnlockedSkillsFromHistory(userId, skills, unlockedIds, userXp) {
-  const lastCheck = localStorage.getItem('last-skill-check');
-  const now = Date.now();
-  if (lastCheck && now - parseInt(lastCheck) < 6 * 3600 * 1000) { // 6h
-    console.log('🕓 Vérification historique déjà effectuée récemment.');
-    return unlockedIds;
-  }
-  localStorage.setItem('last-skill-check', now);
-  console.log('🔁 Vérification historique complète...');
+  console.log('🔁 Vérification historique des compétences (user_skills_progress)...');
   const newlyUnlocked = [];
 
-  for (const skill of skills) {
-    // 🔹 Ignore si déjà débloquée
-    if (unlockedIds.includes(skill.id)) continue;
+  const activities = await fetchUserActivities(userId);
 
-    // 🔹 Vérifie le cache de progression
-    const { data: progress } = await supabaseClient
+  for (const skill of skills) {
+    // Vérifie si déjà marquée "is_met = true"
+    const { data: existing } = await supabaseClient
       .from('user_skills_progress')
       .select('is_met')
       .eq('user_id', userId)
       .eq('skill_id', skill.id)
       .maybeSingle();
 
-    const cachedMet = progress?.is_met;
+    const wasMet = existing?.is_met === true;
 
-    // 🔍 Si pas en cache ou ancien résultat faux → recalcul
-    const canUnlock = cachedMet || await checkSkillAvailable(skill, unlockedIds, userXp, userId);
+    // Si déjà validée, ajoute au tableau local
+    if (wasMet) {
+      if (!unlockedIds.includes(skill.id)) unlockedIds.push(skill.id);
+      continue;
+    }
 
-    // 🧠 Met à jour le cache
+    // Sinon on calcule normalement
+    const canUnlock = await checkSkillAvailable(skill, unlockedIds, userXp, userId);
+
+    // Met à jour le cache
     await supabaseClient
       .from('user_skills_progress')
       .upsert({
@@ -632,41 +689,19 @@ async function updateUnlockedSkillsFromHistory(userId, skills, unlockedIds, user
         is_met: canUnlock
       });
 
-    if (canUnlock) {
-      // Déjà dans user_skills ?
-      const { data: already } = await supabaseClient
-        .from('user_skills_progress')
-        .select('id')
-        .eq('user_id', userId)
-        .eq('skill_id', skill.id)
-        .maybeSingle();
-
-      if (already) continue; // déjà présent → ne pas toaster
-
+    if (canUnlock && !wasMet) {
       newlyUnlocked.push(skill.id);
       unlockedIds.push(skill.id);
 
-      await supabaseClient.from('user_skills_progress').insert({
-        user_id: userId,
-        skill_id: skill.id,
-        unlocked_at: new Date().toISOString()
-      });
-
       Veloskill.showToast({
         type: 'success',
-        title: `Compétence débloquée 🎉`,
-        message: `${skill.name} obtenue rétroactivement`
+        title: `🎉 Nouvelle compétence débloquée`,
+        message: `${skill.name} obtenue grâce à ton historique`
       });
     }
   }
 
-
-  if (!newlyUnlocked.length) {
-    console.log('✅ Aucune nouvelle compétence débloquée via historique.');
-  } else {
-    console.log(`✅ ${newlyUnlocked.length} compétences ajoutées via historique.`);
-  }
-
+  console.log(`✅ ${newlyUnlocked.length} compétences mises à jour.`);
   return unlockedIds;
 }
 

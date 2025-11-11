@@ -1085,3 +1085,70 @@ header {
 .skill-node.locked {
   opacity: 0.4;
 }
+
+/* === Vue globale des 5 arbres === */
+.arbre-overview {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: center;
+  gap: 2rem;
+  padding: 2rem;
+}
+
+.arbre-block {
+  width: 220px;
+  height: 160px;
+  border-radius: 16px;
+  background: #1a1a1a;
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  align-items: center;
+  cursor: pointer;
+  transition: all 0.3s ease;
+  box-shadow: 0 0 10px rgba(0,0,0,0.4);
+}
+
+.arbre-block:hover {
+  transform: scale(1.05);
+  box-shadow: 0 0 16px currentColor;
+}
+
+.arbre-block .icon {
+  font-size: 2.4rem;
+  margin-bottom: 0.6rem;
+}
+
+.arbre-block .title {
+  font-weight: 600;
+  text-transform: capitalize;
+}
+
+.arbre-block .progress {
+  font-size: 0.9rem;
+  opacity: 0.8;
+}
+
+.arbre-block.endurance { color: #42c779; }
+.arbre-block.explosivity { color: #f04a4a; }
+.arbre-block.mental { color: #5b74ff; }
+.arbre-block.strategy { color: #f2b01e; }
+.arbre-block.special { color: #9a5df5; }
+
+.btn-retour {
+  position: fixed;
+  top: 90px;
+  left: 40px;
+  background: #222;
+  color: white;
+  border: 1px solid #444;
+  border-radius: 8px;
+  padding: 0.5rem 1rem;
+  cursor: pointer;
+  transition: background 0.2s;
+  z-index: 20;
+}
+
+.btn-retour:hover {
+  background: #333;
+}
