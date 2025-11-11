@@ -334,39 +334,43 @@ async function renderSkillTrees(trees, unlockedIds, xp, userId) {
     column.className = `skill-tree ${type}`;
     column.style.color = colors[type];
     column.innerHTML = `<h3 class="skill-tree-title">${capitalize(type)}</h3>`;
-    const col = await renderSkillColumn(list, unlockedIds, colors[type], xp, userId);
-    column.appendChild(col);
+    const tree = await renderSkillTreeRecursive(list, unlockedIds, colors[type], xp, user.id, null, 1);
+    column.appendChild(tree);
     container.appendChild(column);
   }
 }
 
 /** Génère les nœuds reliés verticalement */
-async function renderSkillColumn(skills, unlockedIds, color, xp, userId) {
-  const col = document.createElement('div');
-  col.className = 'skill-column';
+async function renderSkillTreeRecursive(skills, unlockedIds, color, xp, userId, parentId = null, depth = 1) {
+  const nodes = skills.filter(s => s.parent_id === parentId);
+  if (!nodes.length) return null;
 
-  for (let i = 0; i < skills.length; i++) {
-    const skill = skills[i];
+  const layer = document.createElement('div');
+  layer.className = 'skill-layer';
+
+  for (const skill of nodes) {
     const isUnlocked = unlockedIds.includes(skill.id);
     const isAvailable = !isUnlocked && await checkSkillAvailable(skill, unlockedIds, xp, userId);
     const state = isUnlocked ? 'unlocked' : isAvailable ? 'available' : 'locked';
+
+    const nodeWrapper = document.createElement('div');
+    nodeWrapper.className = 'skill-node-wrapper';
 
     const node = document.createElement('div');
     node.className = `skill-node ${state}`;
     node.style.borderColor = color;
     node.innerHTML = `<span>${skill.icon || '🌿'}</span>`;
     node.addEventListener('click', () => showSkillPopup(skill, state));
-    col.appendChild(node);
+    nodeWrapper.appendChild(node);
 
-    if (i < skills.length - 1) {
-      const connector = document.createElement('div');
-      connector.className = 'skill-connector';
-      connector.style.background = color;
-      col.appendChild(connector);
-    }
+    // Si l’arbre a des enfants, on les affiche récursivement
+    const childrenLayer = await renderSkillTreeRecursive(skills, unlockedIds, color, xp, userId, skill.id, depth + 1);
+    if (childrenLayer) nodeWrapper.appendChild(childrenLayer);
+
+    layer.appendChild(nodeWrapper);
   }
 
-  return col;
+  return layer;
 }
 
 /* -----------------------------------------------------------

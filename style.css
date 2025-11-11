@@ -1016,3 +1016,72 @@ header {
   flex-wrap: wrap;
   padding: 2rem;
 }
+
+/* === Arbre hiérarchique === */
+.skill-layer {
+  display: flex;
+  justify-content: center;
+  align-items: flex-start;
+  gap: 2rem;
+  position: relative;
+  margin-top: 1.5rem;
+}
+
+.skill-node-wrapper {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  position: relative;
+}
+
+.skill-node-wrapper::before {
+  content: '';
+  position: absolute;
+  top: -1.5rem;
+  left: 50%;
+  width: 2px;
+  height: 1.5rem;
+  background: currentColor;
+  opacity: 0.4;
+}
+
+.skill-layer:first-child .skill-node-wrapper::before {
+  display: none;
+}
+
+/* Connexions horizontales entre enfants d’un même parent */
+.skill-layer::before {
+  content: '';
+  position: absolute;
+  top: -0.75rem;
+  left: 0;
+  right: 0;
+  height: 2px;
+  background: currentColor;
+  opacity: 0.3;
+}
+
+/* Ajustement visuel des nœuds */
+.skill-node {
+  width: 52px;
+  height: 52px;
+  border-radius: 50%;
+  border: 2px solid #555;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 1.4rem;
+  transition: all 0.3s ease;
+}
+.skill-node.unlocked {
+  background: currentColor;
+  color: #000;
+  border-color: currentColor;
+}
+.skill-node.available {
+  box-shadow: 0 0 10px currentColor;
+  cursor: pointer;
+}
+.skill-node.locked {
+  opacity: 0.4;
+}
