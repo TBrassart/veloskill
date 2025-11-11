@@ -18,11 +18,12 @@ export default async function handler(req, res) {
     });
 
     const data = await response.json();
+    console.log("STRAVA RESPONSE:", data);
 
     if (data.access_token) {
       res.status(200).json(data);
     } else {
-      res.status(400).json({ error: "Échec de l'échange du token", details: data });
+      res.status(400).json({ error: "Échec échange token", details: data });
     }
   } catch (err) {
     res.status(500).json({ error: err.message });
