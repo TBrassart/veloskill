@@ -477,30 +477,89 @@ function showSkillPopup(skill, state) {
   const closeBtn = document.querySelector('[data-popup-close]');
   if (!popup || !content) return;
 
-  const conditionText = skill.conditions
-    ? JSON.stringify(skill.conditions, null, 2)
-    : 'Aucune condition';
-  const rewardText = skill.reward
-    ? JSON.stringify(skill.reward, null, 2)
-    : 'Aucune récompense définie';
+  let cond = {};
+  try {
+    cond = typeof skill.conditions === 'string'
+      ? JSON.parse(skill.conditions)
+      : (skill.conditions || {});
+  } catch {}
+
+  let reward = {};
+  try {
+    reward = typeof skill.reward === 'string'
+      ? JSON.parse(skill.reward)
+      : (skill.reward || {});
+  } catch {}
+
+  // --- construire le texte lisible des conditions ---
+  const condParts = [];
+  if (cond.levels) {
+    for (const [k, v] of Object.entries(cond.levels)) {
+      condParts.push(`Niveau ${v} en ${capitalize(k)}`);
+    }
+  }
+  if (cond.xp) {
+    for (const [k, v] of Object.entries(cond.xp)) {
+      condParts.push(`${v} XP ${capitalize(k)}`);
+    }
+  }
+  if (cond.totals) {
+    if (cond.totals.distance_km)
+      condParts.push(`${cond.totals.distance_km} km cumulés`);
+    if (cond.totals.elevation_m)
+      condParts.push(`${cond.totals.elevation_m} m D+ cumulés`);
+    if (cond.totals.rides)
+      condParts.push(`${cond.totals.rides} sorties`);
+  }
+  if (cond.single_ride) {
+    const parts = [];
+    if (cond.single_ride.distance_km)
+      parts.push(`${cond.single_ride.distance_km} km`);
+    if (cond.single_ride.elevation_m)
+      parts.push(`${cond.single_ride.elevation_m} m D+`);
+    if (cond.single_ride.duration_h)
+      parts.push(`${cond.single_ride.duration_h} h`);
+    condParts.push(`Sur une sortie : ${parts.join(' et ')}`);
+  }
+
+  const rewardParts = [];
+  if (reward.badge?.label) rewardParts.push(`🏅 ${reward.badge.label}`);
+  if (reward.title) rewardParts.push(`🎖️ Titre : ${reward.title}`);
+  if (reward.bonus) {
+    for (const [k, v] of Object.entries(reward.bonus)) {
+      rewardParts.push(`✨ ${k.replace(/_/g, ' ')} : ${v}`);
+    }
+  }
 
   content.innerHTML = `
-    <h2>${skill.name}</h2>
-    <p class="skill-type">${skill.type}</p>
-    <p>${skill.description || 'Pas de description.'}</p>
-    <h3>Conditions</h3>
-    <pre>${conditionText}</pre>
-    <h3>Récompense</h3>
-    <pre>${rewardText}</pre>
-    <div class="skill-state">État : <strong>${state}</strong></div>
+    <div class="skill-popup-header">
+      <div class="skill-popup-icon">${skill.icon || '🌿'}</div>
+      <div>
+        <h2>${skill.name}</h2>
+        <p class="skill-type">${capitalize(skill.type)}</p>
+      </div>
+    </div>
+
+    <p class="skill-desc">${skill.description || ''}</p>
+
+    <div class="skill-popup-section">
+      <h3>Conditions</h3>
+      <ul>${condParts.length ? condParts.map(c => `<li>${c}</li>`).join('') : '<li>Aucune</li>'}</ul>
+    </div>
+
+    <div class="skill-popup-section">
+      <h3>Récompenses</h3>
+      <ul>${rewardParts.length ? rewardParts.map(r => `<li>${r}</li>`).join('') : '<li>Aucune</li>'}</ul>
+    </div>
+
+    <div class="skill-popup-footer">
+      <span class="state-label ${state}">${state === 'unlocked' ? '✅ Débloquée' : state === 'available' ? '🌱 Atteignable' : '🔒 Verrouillée'}</span>
+      ${state === 'available' ? `<button class="btn primary" data-unlock-skill>Débloquer</button>` : ''}
+    </div>
   `;
 
   if (state === 'available') {
-    const btn = document.createElement('button');
-    btn.className = 'btn primary';
-    btn.textContent = 'Débloquer';
-    btn.onclick = () => unlockSkill(skill.id);
-    content.appendChild(btn);
+    content.querySelector('[data-unlock-skill]').addEventListener('click', () => unlockSkill(skill.id));
   }
 
   popup.classList.add('show');
@@ -509,6 +568,7 @@ function showSkillPopup(skill, state) {
     if (e.target === popup) popup.classList.remove('show');
   });
 }
+
 
 async function unlockSkill(skillId) {
   const user = currentUser;
