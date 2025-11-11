@@ -197,7 +197,7 @@ const Veloskill = (() => {
     }
 
     // 🔄 Synchronisation Strava automatique à l'ouverture
-    await autoSyncIfNeeded(user.id);
+    await autoSyncIfNeeded(user);
 
     const xp = await getOrComputeUserXp(user.id);
     renderDashboardXp(xp);
@@ -220,8 +220,7 @@ const Veloskill = (() => {
         });
 
         try {
-          const access = await refreshStravaTokenIfNeeded(user.id);
-          await syncStravaActivities(user);
+          await autoSyncIfNeeded(user);
 
           // 🔄 Étape 2 : recalcul des XP immédiatement après la sync
           const newXp = await Veloskill.calculateXpFromActivities(user.id);
@@ -912,7 +911,7 @@ async function updateUserMasteries(userId) {
         });
 
         // 3️⃣ Lance l’import (full sync) via notre logique centrale
-        await autoSyncIfNeeded(user.id);
+        await autoSyncIfNeeded(user);
 
         // 4️⃣ Nettoie l’URL
         window.history.replaceState({}, document.title, window.location.pathname);
@@ -1714,7 +1713,7 @@ async function syncStravaActivities(user) {
       ).then(r => r.json());
 
       // 4️⃣ Insertion dans Supabase - table activities
-      const { error: actError } = await supabase.from("activities").upsert({
+      const { error: actError } = await supabaseClient.from("activities").upsert({
         id_strava: act.id,
         user_id: user.id,
         name: act.name,
@@ -1756,7 +1755,7 @@ async function syncStravaActivities(user) {
         // (Optionnel : on peut réduire à 1 point sur 5 pour alléger)
         const reduced = points.filter((_, i) => i % 5 === 0);
 
-        const { error: streamError } = await supabase.from("streams").insert(reduced);
+        const { error: streamError } = await supabaseClient.from("streams").insert(reduced);
         if (streamError) console.error("⚠️ Erreur insertion streams:", streamError);
       }
 
@@ -1775,7 +1774,7 @@ async function syncStravaActivities(user) {
           end_lng: seg.segment.end_latlng ? seg.segment.end_latlng[1] : null,
         }));
 
-        const { error: segError } = await supabase.from("segments").insert(segData);
+        const { error: segError } = await supabaseClient.from("segments").insert(segData);
         if (segError) console.error("⚠️ Erreur insertion segments:", segError);
       }
 
@@ -1788,14 +1787,21 @@ async function syncStravaActivities(user) {
   console.log("🎉 Synchronisation Strava terminée !");
 }
 
-// Déclenche la sync si nécessaire (à chaque ouverture du Dashboard)
-async function autoSyncIfNeeded(userId) {
-  const { data: token } = await supabaseClient
+// 🔁 Déclenche la sync si nécessaire (à chaque ouverture du Dashboard)
+async function autoSyncIfNeeded(user) {
+  const userId = user.id;
+  const { data: tokenData, error: tokenError } = await supabaseClient
     .from('strava_tokens')
     .select('*')
     .eq('user_id', userId)
     .maybeSingle();
 
+  if (tokenError) {
+    console.error("Erreur lecture strava_tokens:", tokenError);
+    return;
+  }
+
+  const token = tokenData;
   if (!token) return;
 
   const lastSync = token.last_full_sync ? new Date(token.last_full_sync) : null;
@@ -1803,8 +1809,25 @@ async function autoSyncIfNeeded(userId) {
 
   // Première connexion ou >2h sans sync
   if (!token.initial_sync_done || hoursSince > 2) {
-    const access = await refreshStravaTokenIfNeeded(userId);
+    console.log("🔄 Lancement d'une synchronisation Strava automatique...");
     await syncStravaActivities(user);
+
+    // Met à jour le flag dans strava_tokens
+    await supabaseClient
+      .from('strava_tokens')
+      .update({
+        initial_sync_done: true,
+        last_full_sync: new Date().toISOString()
+      })
+      .eq('user_id', userId);
+
+    Veloskill.showToast({
+      type: 'success',
+      title: 'Strava synchronisé ✅',
+      message: 'Import automatique terminé.'
+    });
+  } else {
+    console.log("⏳ Pas de sync nécessaire (récente)");
   }
 }
 
