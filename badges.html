@@ -2,8 +2,7 @@
 <html lang="fr">
 <head>
   <meta charset="UTF-8" />
-  <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>Veloskill · Badges & Récompenses</title>
+  <title>Veloskill · Badges</title>
   <link rel="stylesheet" href="style.css" />
   <script src="https://unpkg.com/@supabase/supabase-js@2"></script>
   <script src="supabase.js" defer></script>
@@ -18,12 +17,12 @@
         <a href="dashboard.html">Dashboard</a>
         <a href="arbre.html">Compétences</a>
         <a href="activities.html">Sorties</a>
-        <a href="badges.html">Badges</a>
+        <a href="boss.html">Boss</a>
+        <a href="badges.html" class="active">Badges</a>
     </nav>
     <div class="nav-right">
       <div class="avatar-wrapper" data-avatar-dropdown-trigger>
         <div class="avatar" data-user-avatar onclick="window.location.href='profile.html'">V</div>
-
         <div class="avatar-dropdown" data-avatar-dropdown>
           <div class="avatar-name" data-user-label></div>
           <a href="profile.html" class="avatar-link">Profil</a>
@@ -35,17 +34,12 @@
   </header>
 
   <main class="badges-page">
-    <div class="badges-filters">
-      <select data-badge-filter>
-        <option value="">Tous les badges</option>
-        <option value="skill">Compétences</option>
-        <option value="boss">Boss</option>
-      </select>
-    </div>
+    <h1>🎖️ Tes badges</h1>
+    <p class="subtitle">Chaque badge représente une étape majeure de ta progression.</p>
 
-    <div class="badges-grid" data-badges-grid>
+    <section class="badges-grid" data-badges-grid>
       <!-- rempli dynamiquement -->
-    </div>
+    </section>
   </main>
 </body>
 </html>

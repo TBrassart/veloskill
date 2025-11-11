@@ -538,63 +538,45 @@ body.light-theme input {
 /* ---- Badges & Récompenses ---- */
 
 .badges-page {
-  max-width: 900px;
-  margin: 2rem auto;
-  padding: 1rem;
-}
-
-.badges-filters {
-  text-align: right;
-  margin-bottom: 1.5rem;
-}
-
-.badges-filters select {
-  background: #1a1a1a;
-  border: 1px solid #333;
-  color: #f7f7f7;
-  padding: 0.6rem;
-  border-radius: 6px;
+  max-width: 960px;
+  margin: 0 auto;
+  padding: 2rem;
 }
 
 .badges-grid {
   display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(160px, 1fr));
-  gap: 1.2rem;
+  grid-template-columns: repeat(auto-fill, minmax(180px, 1fr));
+  gap: 1rem;
+  margin-top: 1.5rem;
 }
 
 .badge-card {
-  background: #121212;
-  border-radius: 10px;
+  background: #111827;
+  border: 1px solid #1f2937;
+  border-radius: 12px;
   padding: 1rem;
   text-align: center;
-  box-shadow: 0 4px 8px rgba(0,0,0,0.3);
-  transition: transform 0.2s ease;
+  transition: all 0.25s ease;
 }
+
 .badge-card:hover {
   transform: translateY(-3px);
+  border-color: #f97316;
 }
 
 .badge-icon {
   font-size: 2rem;
-  margin-bottom: 0.6rem;
+  margin-bottom: 0.5rem;
 }
 
 .badge-title {
   font-weight: 600;
-  margin-bottom: 0.3rem;
+  margin-bottom: 0.25rem;
 }
 
 .badge-desc {
-  color: #aaa;
   font-size: 0.85rem;
-  line-height: 1.3;
-}
-
-.badge-type-skill {
-  border-top: 3px solid #42c779;
-}
-.badge-type-boss {
-  border-top: 3px solid #ffd966;
+  color: #9ca3af;
 }
 
 .main-header {

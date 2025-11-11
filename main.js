@@ -910,16 +910,36 @@ const Veloskill = (() => {
       return;
     }
 
-    const filterSelect = document.querySelector('[data-badge-filter]');
     const grid = document.querySelector('[data-badges-grid]');
+    if (!grid) return;
 
-    let badges = await fetchUserBadges(user.id);
-    renderBadgesList(badges);
+    const { data, error } = await supabaseClient
+      .from('v_user_badges')
+      .select('*')
+      .eq('user_id', user.id)
+      .order('obtained_at', { ascending: false });
 
-    filterSelect.addEventListener('change', () => {
-      const filter = filterSelect.value;
-      const filtered = filter ? badges.filter(b => b.type === filter) : badges;
-      renderBadgesList(filtered);
+    if (error) {
+      console.error('Erreur chargement badges:', error);
+      grid.innerHTML = `<p style="text-align:center;color:#888;">Erreur de chargement.</p>`;
+      return;
+    }
+
+    if (!data || !data.length) {
+      grid.innerHTML = `<p style="text-align:center;color:#888;">Aucun badge débloqué pour le moment.</p>`;
+      return;
+    }
+
+    grid.innerHTML = '';
+    data.forEach(badge => {
+      const card = document.createElement('div');
+      card.className = 'badge-card';
+      card.innerHTML = `
+        <div class="badge-icon">${badge.icon || '🏅'}</div>
+        <div class="badge-title">${badge.title}</div>
+        <div class="badge-desc">${badge.description || ''}</div>
+      `;
+      grid.appendChild(card);
     });
   }
 
@@ -1326,18 +1346,23 @@ const Veloskill = (() => {
    * Hypothèse : table "user_badges" utilisée par fetchUserBadges.
    */
   async function awardBossBadgeIfNeeded(userId, boss) {
+  if (!boss.slug) {
+    console.warn('Boss sans slug, impossible de générer un badge.', boss);
+    return;
+  }
+
   const badgeSlug = `boss-${boss.slug}`;
   const badgeTitle = `Boss vaincu : ${boss.nom}`;
   const badgeDesc = `Tu as vaincu le boss inspiré de ${boss.cycliste || boss.nom}.`;
 
   // 1️⃣ Vérifie ou crée le badge global
-  const { data: badge } = await supabaseClient
+  const { data: existingBadge, error: badgeErr } = await supabaseClient
     .from('badges')
     .select('id')
     .eq('slug', badgeSlug)
     .maybeSingle();
 
-  let badgeId = badge?.id;
+  let badgeId = existingBadge?.id;
 
   if (!badgeId) {
     const { data: created, error: createErr } = await supabaseClient
@@ -1361,14 +1386,14 @@ const Veloskill = (() => {
   }
 
   // 2️⃣ Vérifie si l'utilisateur l'a déjà
-  const { data: existing } = await supabaseClient
+  const { data: existingUserBadge, error: userBadgeErr } = await supabaseClient
     .from('user_badges')
     .select('id')
     .eq('user_id', userId)
     .eq('badge_id', badgeId)
     .maybeSingle();
 
-  if (existing) return; // déjà obtenu
+  if (existingUserBadge) return; // déjà obtenu
 
   // 3️⃣ Associe le badge à l'utilisateur
   const { error: insertErr } = await supabaseClient
@@ -1389,6 +1414,7 @@ const Veloskill = (() => {
     message: badgeTitle
   });
 }
+
 
   /* --------------------- INIT GLOBAL --------------------- */
   async function init() {
