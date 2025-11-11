@@ -831,46 +831,55 @@ async function updateUserMasteries(userId) {
 
     if (stravaCode) {
       try {
-        const res = await fetch(`/api/strava-token?code=${encodeURIComponent(stravaCode)}`);
-        const data = await res.json();
+        // 1️⃣ Échange code → tokens auprès de Strava
+        const res = await fetch('https://www.strava.com/oauth/token', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            client_id: STRAVA_CLIENT_ID,
+            client_secret: STRAVA_CLIENT_SECRET,
+            code: stravaCode,
+            grant_type: 'authorization_code'
+          })
+        });
 
-        if (!res.ok) {
-          throw new Error(data.error || 'Erreur Strava');
+        const data = await res.json();
+        console.log('Strava token response:', data);
+
+        if (!res.ok || !data.access_token) {
+          throw new Error(data.message || 'Erreur lors de la récupération du token Strava');
         }
 
         const { access_token, refresh_token, expires_at, athlete } = data;
 
-        // 2️⃣ Sauvegarde des tokens en base
-        const { error } = await supabaseClient
+        // 2️⃣ Sauvegarde dans strava_tokens
+        const { error: upsertError } = await supabaseClient
           .from('strava_tokens')
           .upsert({
             user_id: user.id,
+            strava_athlete_id: athlete?.id || null, // 🔴 IMPORTANT: correspond à ta colonne
             access_token,
             refresh_token,
-            expires_at,
-            athlete_id: athlete?.id || null
+            expires_at: new Date(expires_at * 1000).toISOString(),
+            initial_sync_done: false,
+            last_full_sync: null
           });
 
-        if (error) throw error;
+        if (upsertError) {
+          console.error('Erreur upsert strava_tokens:', upsertError);
+          throw upsertError;
+        }
 
         Veloskill.showToast({
           type: 'success',
           title: 'Strava connecté',
-          message: 'Tes sorties vont être synchronisées automatiquement.'
+          message: 'Ton compte Strava est relié. Import de tes sorties en cours...'
         });
 
-        // 🔄 Recalcule et met à jour les jauges après la synchro
-        const updatedXp = await calculateXpFromActivities(user.id);
-        renderDashboardXp(updatedXp);
-        showToast({
-          type: 'info',
-          title: 'Progression mise à jour',
-          message: `+${Math.round(updatedXp.endurance)} XP Endurance · +${Math.round(updatedXp.explosivity)} XP Explosivité`
-        });
+        // 3️⃣ Lance l’import (full sync) via notre logique centrale
+        await autoSyncIfNeeded(user.id);
 
-        await updateUserMasteries(user.id);
-
-        // 3️⃣ Nettoie l’URL
+        // 4️⃣ Nettoie l’URL
         window.history.replaceState({}, document.title, window.location.pathname);
       } catch (err) {
         console.error(err);
@@ -881,6 +890,7 @@ async function updateUserMasteries(userId) {
         });
       }
     }
+
 
     const form = document.querySelector('[data-profile-form]');
     const toggleThemeBtn = document.querySelector('[data-toggle-theme]');
