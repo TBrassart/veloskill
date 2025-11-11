@@ -816,5 +816,11 @@ const Veloskill = (() => {
 
   document.addEventListener('DOMContentLoaded', init);
 
-  return { showToast };
+  // On expose quelques fonctions utiles pour le debug
+  return {
+    showToast,
+    calculateXpFromActivities,
+    getOrComputeUserXp
+  };
 })();
+
