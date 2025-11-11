@@ -67,13 +67,6 @@
   </main>
 
   <script>
-    document.querySelector("[data-connect-strava]").addEventListener("click", () => {
-    const clientId = "178503";
-    const redirectUri = encodeURIComponent("https://veloskill.vercel.app/profile.html");
-    const scope = "read,activity:read_all";
-    window.location.href = `https://www.strava.com/oauth/authorize?client_id=${clientId}&response_type=code&redirect_uri=${redirectUri}&scope=${scope}`;
-    });
-
     async function handleStravaRedirect() {
     const params = new URLSearchParams(window.location.search);
     const code = params.get("code");
@@ -83,26 +76,34 @@
 
     try {
         const res = await fetch("https://veloskill.vercel.app/api/strava-auth", {
-            method: "POST",
-            headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({ code }),
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ code }),
+        cache: "no-store"
         });
 
         console.log("Status:", res.status);
-        const data = await res.json();
-        console.log("Réponse Strava:", data);
+        const text = await res.text(); // lit toujours la réponse brute
+        console.log("Réponse brute:", text);
+
+        let data = {};
+        try {
+        data = JSON.parse(text);
+        } catch (e) {
+        console.warn("Réponse non JSON, brute:", text);
+        }
 
         if (res.ok && data.access_token) {
-            statusEl.textContent = "✅ Connecté à Strava";
-            console.log("Strava:", data);
+        statusEl.textContent = `✅ Connecté à Strava (${data.athlete.firstname} ${data.athlete.lastname})`;
+        console.log("✅ Strava connecté:", data);
         } else {
-            statusEl.textContent = `❌ Erreur de connexion (code ${res.status})`;
-            console.error("Erreur:", data);
+        statusEl.textContent = `❌ Erreur de connexion (HTTP ${res.status})`;
+        console.error("❌ Erreur:", data);
         }
-        } catch (err) {
+    } catch (err) {
         console.error("Erreur réseau:", err);
         statusEl.textContent = "❌ Erreur réseau lors de la connexion";
-        }
+    }
     }
 
     handleStravaRedirect();
