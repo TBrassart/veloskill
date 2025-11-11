@@ -163,7 +163,7 @@ const Veloskill = (() => {
       return;
     }
 
-    const xp = await fetchUserXp(user.id);
+    const xp = await getOrComputeUserXp(user.id);
     renderDashboardXp(xp);
     renderDashboardBossPreview();
 
@@ -360,6 +360,68 @@ const Veloskill = (() => {
     });
   }
 
+  /* --------------------- CALCUL XP DYNAMIQUE --------------------- */
+  // Calcule les 4 jauges à partir des activités Strava de l'utilisateur
+  async function calculateXpFromActivities(userId) {
+    const activities = await fetchUserActivities(userId);
+    if (!activities || !activities.length) {
+      return { endurance: 0, explosivity: 0, mental: 0, strategy: 0 };
+    }
+
+    let endurance = 0, explosivity = 0, mental = 0, strategy = 0;
+
+    for (const act of activities) {
+      const dist = act.distance || 0;      // km
+      const elev = act.elevation || 0;     // m
+      const dur = act.duration || 0;       // s
+      const power = act.avg_power || 0;    // W
+      const date = new Date(act.date);
+
+      // ---- Formules XP de base ----
+      endurance += dist * 10 + dur / 300;                  // distance + temps de selle
+      explosivity += (power > 200 ? (power - 200) * 0.5 : 0) + elev * 0.1; // puissance & dénivelé
+      mental += dur / 120 + (date.getDay() === 0 ? 50 : 0); // bonus régularité (sortie dimanche)
+      strategy += (dist / (dur / 3600)) * 2; // vitesse moyenne * 2
+    }
+
+    // ✅ Crée l’objet XP avant de le sauvegarder
+    const xp = {
+      endurance: Math.round(endurance),
+      explosivity: Math.round(explosivity),
+      mental: Math.round(mental),
+      strategy: Math.round(strategy)
+    };
+
+    // ✅ Puis sauvegarde dans Supabase
+    await supabaseClient.from('user_xp').upsert({ user_id: userId, ...xp });
+
+    return xp;
+  }
+
+  /* --------------------- RÉCUPÉRATION XP UTILISATEUR --------------------- */
+  async function getOrComputeUserXp(userId) {
+    // Tente de récupérer les XP existants en base
+    const { data, error } = await supabaseClient
+      .from('user_xp')
+      .select('*')
+      .eq('user_id', userId)
+      .maybeSingle();
+
+    // Si on trouve une ligne, on la renvoie directement
+    if (data && !error) {
+      return {
+        endurance: data.endurance || 0,
+        explosivity: data.explosivity || 0,
+        mental: data.mental || 0,
+        strategy: data.strategy || 0
+      };
+    }
+
+    // Sinon, on les calcule à partir des activités
+    const xp = await calculateXpFromActivities(userId);
+    return xp;
+  }
+
   function renderDashboardXp(xp) {
     const container = document.querySelector('[data-xp-grid]');
     if (!container) return;
@@ -439,6 +501,15 @@ const Veloskill = (() => {
           type: 'success',
           title: 'Strava connecté',
           message: 'Tes sorties vont être synchronisées automatiquement.'
+        });
+
+        // 🔄 Recalcule et met à jour les jauges après la synchro
+        const updatedXp = await calculateXpFromActivities(user.id);
+        renderDashboardXp(updatedXp);
+        showToast({
+          type: 'info',
+          title: 'Progression mise à jour',
+          message: `+${Math.round(updatedXp.endurance)} XP Endurance · +${Math.round(updatedXp.explosivity)} XP Explosivité`
         });
 
         // 3️⃣ Nettoie l’URL
