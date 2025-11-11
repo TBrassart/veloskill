@@ -273,15 +273,21 @@ async function initArbre() {
   const user = sessionData?.user;
   if (!user) return (window.location.href = 'index.html');
 
+  // 1️⃣ Récupère tout
   const [skills, unlocks, xp] = await Promise.all([
     fetchAllSkills(),
     fetchUserUnlocks(user.id),
     getOrComputeUserXp(user.id)
   ]);
 
+  // 2️⃣ Vérifie les déblocages rétroactifs
+  const updatedUnlocks = await updateUnlockedSkillsFromHistory(user.id, skills, unlocks, xp);
+
+  // 3️⃣ Construit et affiche
   const trees = buildSkillTrees(skills);
-  await renderSkillTrees(trees, unlocks, xp, user.id);
+  await renderSkillTrees(trees, updatedUnlocks, xp, user.id);
 }
+
 
 /* -----------------------------------------------------------
    🔧 Construction et rendu des arbres
@@ -518,6 +524,46 @@ async function unlockSkill(skillId) {
     message: 'Bravo, tu viens de progresser 🎉'
   });
   await initArbre();
+}
+
+/* -----------------------------------------------------------
+   🔁 Mise à jour rétroactive des compétences
+----------------------------------------------------------- */
+
+async function updateUnlockedSkillsFromHistory(userId, skills, unlockedIds, userXp) {
+  console.log('🔁 Vérification historique des compétences...');
+  const newlyUnlocked = [];
+
+  for (const skill of skills) {
+    // Déjà débloquée ?
+    if (unlockedIds.includes(skill.id)) continue;
+
+    const canUnlock = await checkSkillAvailable(skill, unlockedIds, userXp, userId);
+    if (canUnlock) {
+      newlyUnlocked.push(skill.id);
+      unlockedIds.push(skill.id);
+
+      await supabaseClient.from('user_skills').insert({
+        user_id: userId,
+        skill_id: skill.id,
+        unlocked_at: new Date().toISOString()
+      });
+
+      Veloskill.showToast({
+        type: 'success',
+        title: `Compétence débloquée 🎉`,
+        message: `${skill.name} obtenue rétroactivement`
+      });
+    }
+  }
+
+  if (!newlyUnlocked.length) {
+    console.log('✅ Aucune nouvelle compétence débloquée via historique.');
+  } else {
+    console.log(`✅ ${newlyUnlocked.length} compétences ajoutées via historique.`);
+  }
+
+  return unlockedIds;
 }
 
 /* -----------------------------------------------------------
