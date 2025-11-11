@@ -264,8 +264,8 @@ const Veloskill = (() => {
     }
   }
 
-  /* ===========================================================
-   🌳 MODULE COMPÉTENCES – NOUVEL ARBRE VISUEL
+/* ===========================================================
+   🌳 MODULE COMPÉTENCES — VERSION COMPLÈTE ET FONCTIONNELLE
    =========================================================== */
 
 async function initArbre() {
@@ -280,10 +280,13 @@ async function initArbre() {
   ]);
 
   const trees = buildSkillTrees(skills);
-  renderSkillTrees(trees, unlocks, xp);
+  await renderSkillTrees(trees, unlocks, xp, user.id);
 }
 
-/** Construit 5 arbres distincts à partir du champ "type" */
+/* -----------------------------------------------------------
+   🔧 Construction et rendu des arbres
+----------------------------------------------------------- */
+
 function buildSkillTrees(skills) {
   const groups = {
     endurance: [],
@@ -299,7 +302,6 @@ function buildSkillTrees(skills) {
     groups[key].push(s);
   }
 
-  // Classement par profondeur (optionnel)
   for (const key in groups) {
     groups[key].sort((a, b) => (a.depth || 1) - (b.depth || 1));
   }
@@ -308,7 +310,7 @@ function buildSkillTrees(skills) {
 }
 
 /** Rendu principal : 5 colonnes côte à côte */
-function renderSkillTrees(trees, unlockedIds, xp) {
+async function renderSkillTrees(trees, unlockedIds, xp, userId) {
   const container = document.querySelector('[data-arbre-container]');
   if (!container) return;
   container.innerHTML = '';
@@ -321,27 +323,29 @@ function renderSkillTrees(trees, unlockedIds, xp) {
     special: '#9a5df5'
   };
 
-  Object.entries(trees).forEach(([type, list]) => {
+  for (const [type, list] of Object.entries(trees)) {
     const column = document.createElement('div');
     column.className = `skill-tree ${type}`;
     column.style.color = colors[type];
     column.innerHTML = `<h3 class="skill-tree-title">${capitalize(type)}</h3>`;
-    column.appendChild(renderSkillColumn(list, unlockedIds, colors[type], xp));
+    const col = await renderSkillColumn(list, unlockedIds, colors[type], xp, userId);
+    column.appendChild(col);
     container.appendChild(column);
-  });
+  }
 }
 
 /** Génère les nœuds reliés verticalement */
-function renderSkillColumn(skills, unlockedIds, color, xp) {
+async function renderSkillColumn(skills, unlockedIds, color, xp, userId) {
   const col = document.createElement('div');
   col.className = 'skill-column';
 
-  skills.forEach((skill, i) => {
-    const node = document.createElement('div');
+  for (let i = 0; i < skills.length; i++) {
+    const skill = skills[i];
     const isUnlocked = unlockedIds.includes(skill.id);
-    const isAvailable = !isUnlocked && checkSkillAvailable(skill, unlockedIds, xp);
+    const isAvailable = !isUnlocked && await checkSkillAvailable(skill, unlockedIds, xp, userId);
     const state = isUnlocked ? 'unlocked' : isAvailable ? 'available' : 'locked';
 
+    const node = document.createElement('div');
     node.className = `skill-node ${state}`;
     node.style.borderColor = color;
     node.innerHTML = `<span>${skill.icon || '🌿'}</span>`;
@@ -354,31 +358,113 @@ function renderSkillColumn(skills, unlockedIds, color, xp) {
       connector.style.background = color;
       col.appendChild(connector);
     }
-  });
+  }
 
   return col;
 }
 
-/** Vérifie si une compétence est disponible */
-function checkSkillAvailable(skill, unlockedIds, userXp) {
-  if (skill.parent_id && !unlockedIds.includes(skill.parent_id)) return false;
-  if (!skill.conditions) return true;
-  try {
-    const cond = typeof skill.conditions === 'string'
-      ? JSON.parse(skill.conditions)
-      : skill.conditions;
+/* -----------------------------------------------------------
+   🧮 Calculs utilisateurs (totaux, conditions)
+----------------------------------------------------------- */
 
-    if (cond.xp_endurance && userXp.endurance < cond.xp_endurance) return false;
-    if (cond.xp_explosivity && userXp.explosivity < cond.xp_explosivity) return false;
-    if (cond.xp_mental && userXp.mental < cond.xp_mental) return false;
-    if (cond.xp_strategy && userXp.strategy < cond.xp_strategy) return false;
-    return true;
-  } catch {
-    return true;
+function computeUserTotals(activities) {
+  const totals = {
+    distance_km: 0,
+    elevation_m: 0,
+    rides: activities.length,
+    long_rides_120k: 0,
+    rides_over_2000m: 0,
+    long_8h: 0
+  };
+
+  for (const a of activities) {
+    const dist = Number(a.distance) || 0;
+    const elev = Number(a.elevation) || 0;
+    const dur = Number(a.duration) || 0;
+
+    totals.distance_km += dist;
+    totals.elevation_m += elev;
+
+    if (dist >= 120) totals.long_rides_120k++;
+    if (elev >= 2000) totals.rides_over_2000m++;
+    if (dur >= 8 * 3600) totals.long_8h++;
   }
+
+  return totals;
 }
 
-/** Ouvre la pop-up de détail */
+/**
+ * Vérifie si une compétence peut être débloquée :
+ * - conditions.xp.*
+ * - conditions.totals.*
+ * - conditions.single_ride.*
+ * - conditions.levels.*
+ */
+async function checkSkillAvailable(skill, unlockedIds, userXp, userId) {
+  if (skill.parent_id && !unlockedIds.includes(skill.parent_id)) return false;
+  if (!skill.conditions) return true;
+
+  let cond;
+  try {
+    cond = typeof skill.conditions === 'string'
+      ? JSON.parse(skill.conditions)
+      : skill.conditions;
+  } catch {
+    console.warn("⚠️ JSON invalide pour", skill.name);
+    return false;
+  }
+
+  const global = await fetchGlobalXp(userId);
+  const activities = await fetchUserActivities(userId);
+  const totals = computeUserTotals(activities);
+
+  // --- XP ---
+  if (cond.xp) {
+    if (cond.xp.global && global.total_xp < cond.xp.global) return false;
+    if (cond.xp.endurance && (userXp.endurance || 0) < cond.xp.endurance) return false;
+    if (cond.xp.explosivity && (userXp.explosivity || 0) < cond.xp.explosivity) return false;
+    if (cond.xp.mental && (userXp.mental || 0) < cond.xp.mental) return false;
+    if (cond.xp.strategy && (userXp.strategy || 0) < cond.xp.strategy) return false;
+  }
+
+  // --- Totaux globaux ---
+  if (cond.totals) {
+    for (const [key, value] of Object.entries(cond.totals)) {
+      if ((totals[key] || 0) < value) return false;
+    }
+  }
+
+  // --- Niveaux requis ---
+  if (cond.levels) {
+    if (cond.levels.endurance && computeLevelFromXp(userXp.endurance) < cond.levels.endurance) return false;
+    if (cond.levels.explosivity && computeLevelFromXp(userXp.explosivity) < cond.levels.explosivity) return false;
+    if (cond.levels.mental && computeLevelFromXp(userXp.mental) < cond.levels.mental) return false;
+    if (cond.levels.strategy && computeLevelFromXp(userXp.strategy) < cond.levels.strategy) return false;
+    if (cond.levels.global && global.level < cond.levels.global) return false;
+  }
+
+  // --- Single ride ---
+  if (cond.single_ride) {
+    const found = activities.some(a => {
+      const dist = Number(a.distance) || 0;
+      const elev = Number(a.elevation) || 0;
+      const durH = (Number(a.duration) || 0) / 3600;
+      const okDist = !cond.single_ride.distance_km || dist >= cond.single_ride.distance_km;
+      const okElev = !cond.single_ride.elevation_m || elev >= cond.single_ride.elevation_m;
+      const okDur = !cond.single_ride.duration_h || durH >= cond.single_ride.duration_h;
+      const okPower = !cond.single_ride.peak_power_w || (a.avg_power && a.avg_power >= cond.single_ride.peak_power_w);
+      return okDist && okElev && okDur && okPower;
+    });
+    if (!found) return false;
+  }
+
+  return true;
+}
+
+/* -----------------------------------------------------------
+   💬 Popup + déblocage
+----------------------------------------------------------- */
+
 function showSkillPopup(skill, state) {
   const popup = document.querySelector('[data-skill-popup]');
   const content = document.querySelector('[data-skill-content]');
@@ -418,7 +504,6 @@ function showSkillPopup(skill, state) {
   });
 }
 
-/** Débloque une compétence */
 async function unlockSkill(skillId) {
   const user = currentUser;
   if (!user) return;
@@ -432,10 +517,12 @@ async function unlockSkill(skillId) {
     title: 'Nouvelle compétence débloquée',
     message: 'Bravo, tu viens de progresser 🎉'
   });
-  await initArbre(); // rechargement
+  await initArbre();
 }
 
-/** utilitaire */
+/* -----------------------------------------------------------
+   🧩 Utilitaire
+----------------------------------------------------------- */
 function capitalize(str) {
   return str.charAt(0).toUpperCase() + str.slice(1);
 }
