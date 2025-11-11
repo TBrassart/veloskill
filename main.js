@@ -221,7 +221,7 @@ const Veloskill = (() => {
 
         try {
           const access = await refreshStravaTokenIfNeeded(user.id);
-          await syncStravaActivities(user.id, access, false);
+          await syncStravaActivities(user);
 
           // 🔄 Étape 2 : recalcul des XP immédiatement après la sync
           const newXp = await Veloskill.calculateXpFromActivities(user.id);
@@ -885,6 +885,7 @@ async function updateUserMasteries(userId) {
         }
 
         const { access_token, refresh_token, expires_at, athlete } = data;
+        localStorage.setItem("strava_access_token", access_token);
 
         // 2️⃣ Sauvegarde dans strava_tokens
         const { error: upsertError } = await supabaseClient
@@ -1658,99 +1659,133 @@ async function updateUserMasteries(userId) {
   });
 }
 
-/* --------------------- STRAVA SYNC AUTOMATIQUE --------------------- */
+// ========================================
+// STRAVA → SUPABASE SYNCHRONISATION
+// ========================================
 
-// Rafraîchit le token Strava si expiré
-async function refreshStravaTokenIfNeeded(userId) {
-  const { data: token } = await supabaseClient
-    .from('strava_tokens')
-    .select('*')
-    .eq('user_id', userId)
-    .maybeSingle();
+// ⚙️ 1. Config : à adapter si besoin
+const STRAVA_API = "https://www.strava.com/api/v3";
 
-  if (!token) return null;
-
-  if (new Date(token.expires_at) < new Date()) {
-    const res = await fetch('https://www.strava.com/oauth/token', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        client_id: STRAVA_CLIENT_ID,
-        client_secret: STRAVA_CLIENT_SECRET,
-        grant_type: 'refresh_token',
-        refresh_token: token.refresh_token
-      })
-    });
-
-    const data = await res.json();
-
-    if (data?.access_token) {
-      await supabaseClient
-        .from('strava_tokens')
-        .update({
-          access_token: data.access_token,
-          refresh_token: data.refresh_token,
-          expires_at: new Date(data.expires_at * 1000).toISOString()
-        })
-        .eq('user_id', userId);
-
-      return data.access_token;
-    }
-  }
-
-  return token.access_token;
+// Récupère le token Strava stocké (après connexion OAuth)
+async function getStravaToken() {
+  return localStorage.getItem("strava_access_token");
 }
 
-// Fonction principale : récupère les activités depuis Strava
-async function syncStravaActivities(userId, accessToken, fullSync = false) {
-  const since = fullSync ? 0 : Math.floor(Date.now() / 1000) - 60 * 60 * 24 * 7; // dernière semaine
+// Fonction principale : synchroniser les activités
+async function syncStravaActivities(user) {
+  const token = await getStravaToken();
+  if (!token) {
+    console.warn("⛔ Aucun token Strava trouvé, utilisateur non connecté à Strava.");
+    return;
+  }
+
+  console.log("🔄 Synchronisation Strava en cours...");
+
+  // 2️⃣ Récupération de toutes les activités de l’utilisateur
   let page = 1;
   let activities = [];
 
   while (true) {
-    const res = await fetch(
-      `https://www.strava.com/api/v3/athlete/activities?after=${since}&page=${page}&per_page=100`,
-      { headers: { Authorization: `Bearer ${accessToken}` } }
-    );
+    const res = await fetch(`${STRAVA_API}/athlete/activities?page=${page}&per_page=50`, {
+      headers: { Authorization: `Bearer ${token}` },
+    });
 
     const data = await res.json();
-    if (!Array.isArray(data) || !data.length) break;
-    activities.push(...data);
+    if (!Array.isArray(data) || data.length === 0) break;
+
+    activities = activities.concat(data);
     page++;
   }
 
+  console.log(`📥 ${activities.length} activités trouvées sur Strava.`);
+
+  // 3️⃣ Pour chaque activité Strava
   for (const act of activities) {
-    await supabaseClient.from('activities').upsert({
-      id: act.id,
-      user_id: userId,
-      date: act.start_date,
-      distance: act.distance / 1000,
-      elevation: act.total_elevation_gain,
-      avg_power: act.average_watts,
-      max_power: act.max_watts,
-      duration: act.moving_time,
-      location: act.name || act.location_city || 'Sortie Strava',
-      type: act.type
-    });
+    try {
+      // Détails de l’activité
+      const details = await fetch(`${STRAVA_API}/activities/${act.id}?include_all_efforts=true`, {
+        headers: { Authorization: `Bearer ${token}` },
+      }).then(r => r.json());
+
+      // Flux GPS ("streams")
+      const streams = await fetch(
+        `${STRAVA_API}/activities/${act.id}/streams?keys=latlng,altitude,watts,heartrate,cadence,distance,time&key_by_type=true`,
+        { headers: { Authorization: `Bearer ${token}` } }
+      ).then(r => r.json());
+
+      // 4️⃣ Insertion dans Supabase - table activities
+      const { error: actError } = await supabase.from("activities").upsert({
+        id_strava: act.id,
+        user_id: user.id,
+        name: act.name,
+        sport_type: act.sport_type,
+        start_date: act.start_date_local,
+        distance_km: act.distance / 1000,
+        elevation_m: act.total_elevation_gain,
+        moving_time_s: act.moving_time,
+        avg_speed_kmh: act.average_speed ? act.average_speed * 3.6 : null,
+        avg_watts: act.average_watts,
+        avg_hr: act.average_heartrate,
+        avg_cadence: act.average_cadence,
+        summary_polyline: act.map?.summary_polyline || null,
+        trainer: act.trainer,
+        manual: act.manual,
+        device_name: act.device_name || details.device_name || null,
+        calories: act.kilojoules || null,
+      });
+
+      if (actError) {
+        console.error("❌ Erreur insertion activité:", actError);
+        continue;
+      }
+
+      // 5️⃣ Insertion des streams GPS (échantillonnage léger)
+      if (streams.latlng?.data?.length) {
+        const points = streams.latlng.data.map((pt, i) => ({
+          activity_id: act.id,
+          lat: pt[0],
+          lng: pt[1],
+          altitude: streams.altitude?.data[i] || null,
+          watts: streams.watts?.data[i] || null,
+          hr: streams.heartrate?.data[i] || null,
+          cadence: streams.cadence?.data[i] || null,
+          distance_m: streams.distance?.data[i] || null,
+          time_s: streams.time?.data[i] || null,
+        }));
+
+        // (Optionnel : on peut réduire à 1 point sur 5 pour alléger)
+        const reduced = points.filter((_, i) => i % 5 === 0);
+
+        const { error: streamError } = await supabase.from("streams").insert(reduced);
+        if (streamError) console.error("⚠️ Erreur insertion streams:", streamError);
+      }
+
+      // 6️⃣ Insertion des segments (Ventoux, etc.)
+      const { segment_efforts } = details;
+      if (Array.isArray(segment_efforts) && segment_efforts.length > 0) {
+        const segData = segment_efforts.map(seg => ({
+          activity_id: act.id,
+          segment_id: seg.segment.id,
+          name: seg.segment.name,
+          distance_m: seg.segment.distance,
+          average_grade: seg.segment.average_grade,
+          start_lat: seg.segment.start_latlng ? seg.segment.start_latlng[0] : null,
+          start_lng: seg.segment.start_latlng ? seg.segment.start_latlng[1] : null,
+          end_lat: seg.segment.end_latlng ? seg.segment.end_latlng[0] : null,
+          end_lng: seg.segment.end_latlng ? seg.segment.end_latlng[1] : null,
+        }));
+
+        const { error: segError } = await supabase.from("segments").insert(segData);
+        if (segError) console.error("⚠️ Erreur insertion segments:", segError);
+      }
+
+      console.log(`✅ Activité ${act.name} (${act.id}) synchronisée`);
+    } catch (err) {
+      console.error(`🚨 Erreur sur activité ${act.id}:`, err);
+    }
   }
 
-  await supabaseClient
-    .from('strava_tokens')
-    .update({
-      last_full_sync: new Date().toISOString(),
-      initial_sync_done: true
-    })
-    .eq('user_id', userId);
-
-  await calculateXpFromActivities(userId);
-  await updateUserMasteries(userId);
-  await updateBossProgress(userId);
-
-  Veloskill.showToast({
-    type: 'success',
-    title: 'Strava synchronisé',
-    message: `${activities.length} activités importées 🚴‍♂️`
-  });
+  console.log("🎉 Synchronisation Strava terminée !");
 }
 
 // Déclenche la sync si nécessaire (à chaque ouverture du Dashboard)
@@ -1769,7 +1804,7 @@ async function autoSyncIfNeeded(userId) {
   // Première connexion ou >2h sans sync
   if (!token.initial_sync_done || hoursSince > 2) {
     const access = await refreshStravaTokenIfNeeded(userId);
-    await syncStravaActivities(userId, access, !token.initial_sync_done);
+    await syncStravaActivities(user);
   }
 }
 
