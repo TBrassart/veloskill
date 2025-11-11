@@ -430,12 +430,20 @@ async function renderSkillTreeRecursive(skills, unlockedIds, color, xp, userId, 
 
   if (depth === 1) container.innerHTML = ''; // reset lors de l'ouverture
 
-  const nodes = skills.filter(s => (parentId === null ? !s.parent_id : s.parent_id === parentId));
+  const nodes = skills.filter(s => {
+    if (parentId === null) {
+      // 🔹 Vraies racines : pas de parent_id OU parent_id inexistant dans la liste
+      return !s.parent_id || !skills.find(x => x.id === s.parent_id);
+    }
+    // 🔹 Enfants directs
+    return s.parent_id === parentId;
+  });
   if (!nodes.length) return null;
 
   const layer = document.createElement('div');
   layer.className = 'skill-layer';
 
+  nodes.sort((a, b) => (a.depth || 0) - (b.depth || 0));
   for (const skill of nodes) {
     const isUnlocked = unlockedIds.includes(skill.id);
     const isAvailable = !isUnlocked && await checkSkillAvailable(skill, unlockedIds, xp, userId);
