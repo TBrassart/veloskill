@@ -1698,6 +1698,84 @@ async function updateUserMasteries(userId) {
 // ⚙️ 1. Config : à adapter si besoin
 const STRAVA_API = "https://www.strava.com/api/v3";
 
+async function getValidStravaAccessToken(user) {
+  const STRAVA_TOKEN_URL = "https://www.strava.com/oauth/token";
+
+  // 1️⃣ Regarder en base
+  const { data: tokenRow, error } = await supabaseClient
+    .from("strava_tokens")
+    .select("access_token, refresh_token, expires_at")
+    .eq("user_id", user.id)
+    .maybeSingle();
+
+  if (error) {
+    console.error("Erreur lecture strava_tokens:", error);
+    return null;
+  }
+
+  if (!tokenRow) {
+    console.warn("Aucun token Strava en base pour cet utilisateur.");
+    return null;
+  }
+
+  const now = new Date();
+  const expiresAt = tokenRow.expires_at ? new Date(tokenRow.expires_at) : null;
+
+  // 2️⃣ Si le token est encore valide → on l'utilise
+  if (expiresAt && expiresAt > now && tokenRow.access_token) {
+    localStorage.setItem("strava_access_token", tokenRow.access_token);
+    return tokenRow.access_token;
+  }
+
+  // 3️⃣ Sinon → on tente un refresh avec le refresh_token
+  if (!tokenRow.refresh_token) {
+    console.warn("Pas de refresh_token Strava disponible.");
+    return null;
+  }
+
+  try {
+    const res = await fetch(STRAVA_TOKEN_URL, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        client_id: STRAVA_CLIENT_ID,
+        client_secret: STRAVA_CLIENT_SECRET,
+        grant_type: "refresh_token",
+        refresh_token: tokenRow.refresh_token
+      })
+    });
+
+    const data = await res.json();
+    if (!res.ok || !data.access_token) {
+      console.error("Échec du refresh Strava:", data);
+      return null;
+    }
+
+    const newAccess = data.access_token;
+    const newRefresh = data.refresh_token || tokenRow.refresh_token;
+    const newExpiresAt = data.expires_at
+      ? new Date(data.expires_at * 1000).toISOString()
+      : tokenRow.expires_at;
+
+    // 4️⃣ On met à jour en base
+    await supabaseClient
+      .from("strava_tokens")
+      .update({
+        access_token: newAccess,
+        refresh_token: newRefresh,
+        expires_at: newExpiresAt
+      })
+      .eq("user_id", user.id);
+
+    localStorage.setItem("strava_access_token", newAccess);
+    console.log("✅ Token Strava rafraîchi.");
+    return newAccess;
+  } catch (err) {
+    console.error("Erreur lors du refresh Strava:", err);
+    return null;
+  }
+}
+
 // Récupère le token Strava stocké (après connexion OAuth)
 async function getStravaToken() {
   return localStorage.getItem("strava_access_token");
@@ -1708,8 +1786,8 @@ async function syncStravaActivities(user) {
   const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
   const STRAVA_API = "https://www.strava.com/api/v3";
 
-  // 1️⃣ Récupération du token
-  let token = localStorage.getItem("strava_access_token");
+  // ✅ 1️⃣ Utilise le helper pour récupérer ou rafraîchir le token
+  let token = await getValidStravaAccessToken(user);
   if (!token) {
     console.warn("🔎 Token non trouvé dans localStorage, lecture depuis Supabase...");
     const { data, error } = await supabaseClient
@@ -1740,7 +1818,7 @@ async function syncStravaActivities(user) {
   let sinceParam = "";
   let isFirstSync = false;
 
-  if (true) {
+  if (!syncState?.initial_sync_done) {
     console.log("🚀 Première synchronisation : import complet de l’historique Strava");
     isFirstSync = true;
   } else if (syncState?.last_full_sync) {
