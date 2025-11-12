@@ -1136,11 +1136,11 @@ async function updateUserMasteries(userId) {
       card.className = 'activity-card';
       const date = new Date(act.start_date || act.start_date_local);
       const formattedDate = date.toLocaleDateString('fr-FR', { day: '2-digit', month: 'short', year: 'numeric' });
-      const distance = act.distance ? act.distance.toFixed(1) : 0;
-      const elev = act.elevation || 0;
-      const power = act.avg_power ? Math.round(act.avg_power) : '—';
-      const durationH = Math.floor((act.duration || 0) / 3600);
-      const durationM = Math.floor(((act.duration || 0) % 3600) / 60);
+      const distance = act.distance_km ? act.distance_km.toFixed(1) : 0;
+      const elev = act.elevation_m || 0;
+      const power = act.avg_watts ? Math.round(act.avg_watts) : '—';
+      const durationH = Math.floor((act.moving_time_s || 0) / 3600);
+      const durationM = Math.floor(((act.moving_time_s || 0) % 3600) / 60);
 
       card.innerHTML = `
         <div class="activity-info">
