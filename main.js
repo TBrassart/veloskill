@@ -515,10 +515,10 @@ function computeActivityStats(activities) {
   let maxPower = 0;
 
   for (const a of activities) {
-    const dist = Number(a.distance || 0);
-    const elev = Number(a.elevation || 0);
-    const dur = Number(a.duration || 0) / 3600; // secondes → heures
-    const pow = Number(a.avg_power || 0);
+    const dist = Number(a.distance_km || 0);
+    const elev = Number(a.elevation_m || 0);
+    const dur = Number(a.duration_h || 0) / 3600; // secondes → heures
+    const pow = Number(a.avg_watts || 0);
 
     totals.distance_km += dist;
     totals.elevation_m += elev;
