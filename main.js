@@ -517,7 +517,7 @@ function computeActivityStats(activities) {
   for (const a of activities) {
     const dist = Number(a.distance_km || 0);
     const elev = Number(a.elevation_m || 0);
-    const dur = Number(a.duration_h || 0) / 3600; // secondes → heures
+    const dur = Number(a.moving_time_s || 0) / 3600; // secondes → heures
     const pow = Number(a.avg_watts || 0);
 
     totals.distance_km += dist;
@@ -639,7 +639,7 @@ async function updateUserMasteries(userId) {
 
     for (const mastery of masteries) {
       const cond = mastery.condition;
-      const level = await evaluateCondition(cond, stats);
+      const level = await evaluateCondition(cond, stats, userId);
 
       if (level > 0) {
         await supabaseClient.from('user_masteries').upsert({
@@ -647,7 +647,7 @@ async function updateUserMasteries(userId) {
           mastery_id: mastery.id,
           level,
           unlocked_at: new Date().toISOString()
-        });
+        }, { onConflict: 'user_id,mastery_id' });
       }
     }
 
