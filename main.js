@@ -1144,8 +1144,8 @@ async function updateUserMasteries(userId) {
 
       card.innerHTML = `
         <div class="activity-info">
-          <div class="activity-title">${act.location || act.type || 'Sortie'}</div>
-          <div class="activity-meta">${formattedDate} • ${act.type || 'Ride'}</div>
+          <div class="activity-title">${act.name || act.sport_type || 'Sortie'}</div>
+          <div class="activity-meta">${formattedDate} • ${act.sport_type || 'Ride'}</div>
         </div>
         <div class="activity-stats">
           <span>🚴‍♂️ <strong>${distance}</strong> km</span>
