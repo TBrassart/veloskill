@@ -675,7 +675,7 @@ async function updateUserMasteries(userId) {
       const elev = Number(act.elevation) || 0;  // m
       const dur = Number(act.duration) || 0;    // s
       const power = Number(act.avg_power) || 0; // W
-      const date = new Date(act.date);
+      const date = new Date(act.start_date || act.start_date_local);
 
       // Recalculer la vitesse moyenne en km/h si possible
       const speed = dur > 0 ? (dist / (dur / 3600)) : 0;
@@ -1134,7 +1134,7 @@ async function updateUserMasteries(userId) {
     activities.forEach(act => {
       const card = document.createElement('div');
       card.className = 'activity-card';
-      const date = new Date(act.date);
+      const date = new Date(act.start_date || act.start_date_local);
       const formattedDate = date.toLocaleDateString('fr-FR', { day: '2-digit', month: 'short', year: 'numeric' });
       const distance = act.distance ? act.distance.toFixed(1) : 0;
       const elev = act.elevation || 0;

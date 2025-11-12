@@ -167,7 +167,7 @@ async function fetchUserActivities(userId, search = '', type = '') {
     .from('activities')
     .select('*')
     .eq('user_id', userId)
-    .order('date', { ascending: false })
+    .order('start_date', { ascending: false })
     .limit(50);
 
   if (type) query = query.eq('type', type);
