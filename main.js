@@ -1980,12 +1980,16 @@ async function syncStravaActivities(user) {
   });
 }
 
+// 🧩 Backfill : reconstruire les segments pour les activités déjà importées
 async function backfillSegments(user) {
   const STRAVA_API = "https://www.strava.com/api/v3";
   const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 
-  // 1️⃣ Token valide
-  const token = await getValidStravaAccessToken(user);
+  const PER_REQUEST_SLEEP_MS = 300;           // tempo douce entre requêtes
+  const RATE_LIMIT_SLEEP_MS   = 15 * 60 * 1000; // 15 minutes si 429
+
+  // 1) Token valide
+  let token = await getValidStravaAccessToken(user);
   if (!token) {
     console.error("⛔ Aucun token Strava valide pour backfillSegments.");
     Veloskill.showToast({
@@ -1996,7 +2000,7 @@ async function backfillSegments(user) {
     return;
   }
 
-  // 2️⃣ Récupérer toutes les activités de l'utilisateur
+  // 2) Toutes les activités de l'utilisateur
   const { data: acts, error: actsErr } = await supabaseClient
     .from("activities")
     .select("id_strava")
@@ -2006,13 +2010,12 @@ async function backfillSegments(user) {
     console.error("Erreur lecture activités:", actsErr);
     return;
   }
-
   if (!acts || !acts.length) {
     console.log("Aucune activité trouvée pour cet utilisateur.");
     return;
   }
 
-  // 3️⃣ Charger les segments déjà existants pour éviter les doublons
+  // 3) Segments déjà existants (pour éviter doublons)
   const { data: existingSegs } = await supabaseClient
     .from("segments")
     .select("activity_id, segment_id")
@@ -2023,27 +2026,69 @@ async function backfillSegments(user) {
   );
 
   let inserted = 0;
+  let processed = 0;
 
   for (const a of acts) {
-    const res = await fetch(
-      `${STRAVA_API}/activities/${a.id_strava}?include_all_efforts=true`,
-      { headers: { Authorization: `Bearer ${token}` } }
-    );
+    processed++;
 
-    if (!res.ok) {
-      console.warn(`⚠️ Impossible de récupérer les détails pour ${a.id_strava} (${res.status})`);
+    // --- Récupération des détails avec gestion 429/401 ---
+    let details = null;
+    let tryCount = 0;
+
+    while (true) {
+      tryCount++;
+      const res = await fetch(
+        `${STRAVA_API}/activities/${a.id_strava}?include_all_efforts=true`,
+        { headers: { Authorization: `Bearer ${token}` } }
+      );
+
+      if (res.status === 429) {
+        console.warn("🚨 Limite API Strava atteinte (429). Pause 15 minutes puis reprise...");
+        Veloskill.showToast({
+          type: "warning",
+          title: "Limite Strava atteinte",
+          message: "Pause de 15 minutes avant reprise du backfill des segments."
+        });
+        await sleep(RATE_LIMIT_SLEEP_MS);
+        continue; // retry même activité
+      }
+
+      if (res.status === 401 && tryCount <= 2) {
+        // token expiré → refresh puis retry une fois
+        console.warn("🔒 401 Strava. Tentative de refresh token...");
+        token = await getValidStravaAccessToken(user);
+        if (!token) {
+          console.error("❌ Refresh token impossible. Abandon pour cette activité.");
+          break;
+        }
+        continue; // retry avec nouveau token
+      }
+
+      if (!res.ok) {
+        console.warn(`⚠️ Impossible de récupérer les détails pour ${a.id_strava} (status ${res.status})`);
+        break; // on passe à l'activité suivante
+      }
+
+      details = await res.json();
+      break;
+    }
+
+    if (!details) {
+      await sleep(PER_REQUEST_SLEEP_MS);
       continue;
     }
 
-    const details = await res.json();
     const { segment_efforts } = details;
-
     if (!Array.isArray(segment_efforts) || !segment_efforts.length) {
+      if (processed % 25 === 0) {
+        console.log(`→ ${processed}/${acts.length} activités passées (0 segment sur cette activité).`);
+      }
+      await sleep(PER_REQUEST_SLEEP_MS);
       continue;
     }
 
+    // --- Préparation des lignes segments (sans doublons) ---
     const segRows = [];
-
     for (const seg of segment_efforts) {
       const key = `${a.id_strava}:${seg.segment.id}`;
       if (existingKeys.has(key)) continue;
@@ -2073,11 +2118,17 @@ async function backfillSegments(user) {
         console.error("❌ Erreur insertion segments:", insertErr);
       } else {
         inserted += segRows.length;
-        console.log(`+${segRows.length} segments pour activité ${a.id_strava}`);
+        console.log(`+${segRows.length} segments pour activité ${a.id_strava} (total: ${inserted})`);
       }
     }
 
-    await sleep(300); // anti rate-limit
+    // pacing anti rate limit
+    await sleep(PER_REQUEST_SLEEP_MS);
+
+    // petit log de progression
+    if (processed % 25 === 0) {
+      console.log(`Progression backfill: ${processed}/${acts.length} activités traitées, ${inserted} segments ajoutés.`);
+    }
   }
 
   console.log(`🎉 Backfill segments terminé : ${inserted} segments ajoutés.`);
