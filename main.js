@@ -558,7 +558,7 @@ function computeActiveWeeks(activities) {
 }
 
 // Évalue une condition (total, single_ride, geo, etc.)
-async function evaluateCondition(cond, stats, userId) {
+async function evaluateCondition(cond, stats, userId, activities = []) {
   const c = typeof cond === 'string' ? JSON.parse(cond) : cond;
   if (!c) return 0;
 
@@ -610,6 +610,78 @@ async function evaluateCondition(cond, stats, userId) {
       metricValue = hasMatch ? 1 : 0;
       break;
     }
+    case 'streak_days': {
+      // 🔹 Nombre maximum de jours consécutifs avec activité
+      const dates = [...new Set(activities.map(a => a.start_date.split('T')[0]))].sort();
+      let streak = 1, maxStreak = 1;
+      for (let i = 1; i < dates.length; i++) {
+        const diff = (new Date(dates[i]) - new Date(dates[i - 1])) / (1000 * 60 * 60 * 24);
+        if (diff <= 1) streak++;
+        else streak = 1;
+        if (streak > maxStreak) maxStreak = streak;
+      }
+      metricValue = maxStreak;
+      break;
+    }
+
+    case 'rolling_week': {
+      // 🔹 Durée cumulée sur les 7 derniers jours (en heures)
+      const now = new Date();
+      const weekAgo = new Date(now.getTime() - 7 * 24 * 3600 * 1000);
+      const weekHours = activities
+        .filter(a => new Date(a.start_date) >= weekAgo)
+        .reduce((sum, a) => sum + (a.moving_time_s || 0) / 3600, 0);
+      metricValue = weekHours;
+      break;
+    }
+
+    case 'profile': {
+      // 🔹 Profil complet + Strava relié
+      const { data: profile } = await supabaseClient
+        .from('profiles')
+        .select('name, ftp, weight')
+        .eq('id', userId)
+        .maybeSingle();
+
+      const { data: strava } = await supabaseClient
+        .from('strava_tokens')
+        .select('id')
+        .eq('user_id', userId)
+        .maybeSingle();
+
+      metricValue = (profile?.name && profile?.ftp && profile?.weight && strava) ? 1 : 0;
+      break;
+    }
+
+    case 'segment_pr': {
+      // 🔹 Avoir refait un segment et amélioré son PR
+      const { data: segEfforts } = await supabaseClient
+        .from('segments')
+        .select('segment_id, elapsed_time')
+        .eq('user_id', userId);
+
+      const bests = {};
+      let improved = 0;
+      for (const s of segEfforts || []) {
+        if (!bests[s.segment_id]) bests[s.segment_id] = s.elapsed_time;
+        else if (s.elapsed_time < bests[s.segment_id]) {
+          improved++;
+          bests[s.segment_id] = s.elapsed_time;
+        }
+      }
+      metricValue = improved > 0 ? 1 : 0;
+      break;
+    }
+
+    case 'trainer_total': {
+      // 🔹 Temps total passé en intérieur
+      const trainerHours = activities
+        .filter(a => a.trainer)
+        .reduce((sum, a) => sum + (a.moving_time_s || 0) / 3600, 0);
+      metricValue = trainerHours;
+      break;
+    }
+
     default:
       return 0;
   }
@@ -639,7 +711,7 @@ async function updateUserMasteries(userId) {
 
     for (const mastery of masteries) {
       const cond = mastery.condition;
-      const level = await evaluateCondition(cond, stats, userId);
+      const level = await evaluateCondition(cond, stats, userId, activities);
 
       if (level > 0) {
         await supabaseClient.from('user_masteries').upsert({
