@@ -506,6 +506,7 @@ function computeActivityStats(activities) {
     duration_h: 0,
     rides: activities.length,
     avg_power: 0,
+    avg_cadence: 0,
     countries: new Set()
   };
 
@@ -533,11 +534,31 @@ function computeActivityStats(activities) {
     if (dur > maxDuration) maxDuration = dur;
     if (pow > maxPower) maxPower = pow;
     if (a.country) totals.countries.add(a.country);
-    if (activities.length) {
-      const totalCadence = activities.reduce((sum, a) => sum + (a.avg_cadence || 0), 0);
-      totals.avg_cadence = totalCadence / activities.length;
-    }
   }
+
+    // Moyennes globales
+  if (activities.length) {
+    const totalPower = activities.reduce((s, a) => s + (a.avg_watts || a.avg_power || 0), 0);
+    totals.avg_power = totalPower / activities.length;
+
+    const totalCad = activities.reduce((s, a) => s + (a.avg_cadence || 0), 0);
+    totals.avg_cadence = totalCad / activities.length;
+  }
+
+  // 7 derniers jours
+  const now = new Date();
+  const weekAgo = new Date(now.getTime() - 7 * 24 * 3600 * 1000);
+  totals.weekly_duration_h = activities
+    .filter(a => new Date(a.start_date || a.start_date_local) >= weekAgo)
+    .reduce((s, a) => s + (Number(a.moving_time_s || 0) / 3600), 0);
+
+  // Home trainer
+  const htHours = activities
+    .filter(a => a.trainer === true)
+    .map(a => Number(a.moving_time_s || 0) / 3600);
+
+  totals.trainer_duration_h = htHours.reduce((s, x) => s + x, 0);
+  totals.trainer_duration_h_max = htHours.length ? Math.max(...htHours) : 0;
 
   return {
     ...totals,
@@ -618,20 +639,12 @@ async function evaluateCondition(cond, stats, userId, activities = []) {
       metricValue = maxStreak;
       break;
     }
-
     case 'rolling_week': {
-      // 🔹 Durée cumulée sur les 7 derniers jours (en heures)
-      const now = new Date();
-      const weekAgo = new Date(now.getTime() - 7 * 24 * 3600 * 1000);
-      const weekHours = activities
-        .filter(a => new Date(a.start_date) >= weekAgo)
-        .reduce((sum, a) => sum + (a.moving_time_s || 0) / 3600, 0);
-      metricValue = weekHours;
+      // Heures cumulées sur 7 jours glissants
+      metricValue = stats.weekly_duration_h || 0;
       break;
     }
-
     case 'profile': {
-      // 🔹 Profil complet + Strava relié
       const { data: profile } = await supabaseClient
         .from('profiles')
         .select('name, ftp, weight')
@@ -647,33 +660,33 @@ async function evaluateCondition(cond, stats, userId, activities = []) {
       metricValue = (profile?.name && profile?.ftp && profile?.weight && strava) ? 1 : 0;
       break;
     }
-
     case 'segment_pr': {
-      // 🔹 Avoir refait un segment et amélioré son PR
+      // Avoir refait un segment ET amélioré son PR (nécessite segments.elapsed_time stocké)
       const { data: segEfforts } = await supabaseClient
         .from('segments')
         .select('segment_id, elapsed_time')
-        .eq('user_id', userId);
+        .in('activity_id',
+          (await supabaseClient.from('activities')
+            .select('id_strava')
+            .eq('user_id', userId)
+          ).data?.map(a => a.id_strava) || []
+        );
 
-      const bests = {};
+      const best = new Map(); // segment_id -> best time seen so far
       let improved = 0;
-      for (const s of segEfforts || []) {
-        if (!bests[s.segment_id]) bests[s.segment_id] = s.elapsed_time;
-        else if (s.elapsed_time < bests[s.segment_id]) {
+      for (const s of (segEfforts || [])) {
+        if (!best.has(s.segment_id)) best.set(s.segment_id, s.elapsed_time);
+        else if (s.elapsed_time < best.get(s.segment_id)) {
           improved++;
-          bests[s.segment_id] = s.elapsed_time;
+          best.set(s.segment_id, s.elapsed_time);
         }
       }
       metricValue = improved > 0 ? 1 : 0;
       break;
     }
-
     case 'trainer_total': {
-      // 🔹 Temps total passé en intérieur
-      const trainerHours = activities
-        .filter(a => a.trainer)
-        .reduce((sum, a) => sum + (a.moving_time_s || 0) / 3600, 0);
-      metricValue = trainerHours;
+      // Heures totales en home trainer
+      metricValue = stats.trainer_duration_h || 0;
       break;
     }
 
@@ -2013,7 +2026,7 @@ async function syncStravaActivities(user) {
           start_lng: seg.segment.start_latlng ? seg.segment.start_latlng[1] : null,
           end_lat: seg.segment.end_latlng ? seg.segment.end_latlng[0] : null,
           end_lng: seg.segment.end_latlng ? seg.segment.end_latlng[1] : null,
-          elapsed_time: seg.elapsed_time
+          elapsed_time: seg.elapsed_time,
         }));
 
         const { error: segError } = await supabaseClient
