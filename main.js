@@ -2048,6 +2048,7 @@ async function syncStravaActivities(user) {
           user_id: user.id,
           activity_id: act.id,
           segment_id: seg.segment.id,
+          elapsed_time: seg.elapsed_time,
           name: seg.segment.name,
           distance_m: seg.segment.distance,
           average_grade: seg.segment.average_grade,
@@ -2055,7 +2056,6 @@ async function syncStravaActivities(user) {
           start_lng: seg.segment.start_latlng ? seg.segment.start_latlng[1] : null,
           end_lat: seg.segment.end_latlng ? seg.segment.end_latlng[0] : null,
           end_lng: seg.segment.end_latlng ? seg.segment.end_latlng[1] : null,
-          elapsed_time: seg.elapsed_time,
         }));
 
         const { error: segError } = await supabaseClient
