@@ -590,23 +590,14 @@ async function evaluateCondition(cond, stats, userId, activities = []) {
       metricValue = stats.trainer_duration_h_max || 0;
       break;
     case 'segment': {
-      // ✅ Si les IDs de segments sont déjà passés dans les stats, on les utilise
-      const userSegmentIds =
-        (stats.segmentIds && Array.isArray(stats.segmentIds))
-          ? stats.segmentIds
-          : (
-              (await supabaseClient
-                .from('segments')
-                .select('segment_id')
-                .eq('user_id', userId)
-              ).data || []
-            ).map(s => s.segment_id);
+      const { data: segData } = await supabaseClient
+        .from('segments')
+        .select('segment_id')
+        .eq('user_id', userId);
 
-      const requiredSegments = Array.isArray(c.thresholds) ? c.thresholds : [];
-
-      // ✅ Validation si au moins un segment correspond
-      const hasMatch = requiredSegments.some(segId => userSegmentIds.includes(segId));
-
+      const userSegmentIds = (segData || []).map(s => s.segment_id);
+      const requiredSegments = c.thresholds || [];
+      const hasMatch = requiredSegments.some(id => userSegmentIds.includes(id));
       metricValue = hasMatch ? 1 : 0;
       break;
     }
@@ -2017,6 +2008,7 @@ async function syncStravaActivities(user) {
           start_lng: seg.segment.start_latlng ? seg.segment.start_latlng[1] : null,
           end_lat: seg.segment.end_latlng ? seg.segment.end_latlng[0] : null,
           end_lng: seg.segment.end_latlng ? seg.segment.end_latlng[1] : null,
+          elapsed_time: seg.elapsed_time
         }));
 
         const { error: segError } = await supabaseClient
