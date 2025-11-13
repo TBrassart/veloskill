@@ -661,33 +661,55 @@ async function evaluateCondition(cond, stats, userId, activities = []) {
       break;
     }
     case 'segment_pr': {
-      const { data: acts } = await supabaseClient
+      // 🔹 Récupère toutes les activités Strava de l'utilisateur
+      const { data: acts, error: actErr } = await supabaseClient
         .from('activities')
         .select('id_strava')
         .eq('user_id', userId);
 
-      const actIds = (acts || []).map(a => a.id_strava);
+      if (actErr || !acts?.length) {
+        metricValue = 0;
+        break;
+      }
+
+      const actIds = acts.map(a => a.id_strava);
       let allEfforts = [];
 
-      // ⚙️ Diviser en paquets de 50 pour éviter les URLs trop longues
+      // 🔹 Découpage en paquets de 50 pour éviter les URLs trop longues
       for (let i = 0; i < actIds.length; i += 50) {
         const slice = actIds.slice(i, i + 50);
-        const { data: segs } = await supabaseClient
+
+        const { data: segs, error: segErr } = await supabaseClient
           .from('segments')
           .select('segment_id, elapsed_time')
           .in('activity_id', slice);
+
+        if (segErr) {
+          console.error("Erreur segments (slice)", slice, segErr);
+          continue;
+        }
+
         if (segs) allEfforts = allEfforts.concat(segs);
       }
 
+      if (!allEfforts.length) {
+        metricValue = 0;
+        break;
+      }
+
+      // 🔹 Détection de PR amélioré
       const best = new Map();
       let improved = 0;
+
       for (const s of allEfforts) {
-        if (!best.has(s.segment_id)) best.set(s.segment_id, s.elapsed_time);
-        else if (s.elapsed_time < best.get(s.segment_id)) {
+        if (!best.has(s.segment_id)) {
+          best.set(s.segment_id, s.elapsed_time);
+        } else if (s.elapsed_time < best.get(s.segment_id)) {
           improved++;
           best.set(s.segment_id, s.elapsed_time);
         }
       }
+
       metricValue = improved > 0 ? 1 : 0;
       break;
     }
