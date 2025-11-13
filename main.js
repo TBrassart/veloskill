@@ -2210,6 +2210,7 @@ async function backfillSegments(user) {
         segment_id: seg.segment.id,
         name: seg.segment.name,
         distance_m: seg.segment.distance,
+        elapsed_time: seg.elapsed_time,
         average_grade: seg.segment.average_grade,
         start_lat: seg.segment.start_latlng ? seg.segment.start_latlng[0] : null,
         start_lng: seg.segment.start_latlng ? seg.segment.start_latlng[1] : null,
