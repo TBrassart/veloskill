@@ -233,7 +233,7 @@ const Veloskill = (() => {
           await updateBossProgress(user.id);
 
           // 🔄 Mise à jour automatique des maîtrises
-          await updateUserMasteries(user.id);
+          await Veloskill.updateUserMasteries(user.id);
 
           const oldXp = await getOrComputeUserXp(user.id);
           const oldLevel = computeLevelFromXp(oldXp.endurance);
@@ -285,7 +285,7 @@ async function initMasteries() {
   if (!user) return (window.location.href = 'index.html');
 
   // Met à jour les niveaux automatiquement avant affichage
-  await updateUserMasteries(user.id);
+  await Veloskill.updateUserMasteries(user.id);
 
   const [masteries, userLevels] = await Promise.all([
     fetchMasteries(),
