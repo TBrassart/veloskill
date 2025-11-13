@@ -532,8 +532,11 @@ function computeActivityStats(activities) {
     if (elev > maxElevation) maxElevation = elev;
     if (dur > maxDuration) maxDuration = dur;
     if (pow > maxPower) maxPower = pow;
-
     if (a.country) totals.countries.add(a.country);
+    if (activities.length) {
+      const totalCadence = activities.reduce((sum, a) => sum + (a.avg_cadence || 0), 0);
+      totals.avg_cadence = totalCadence / activities.length;
+    }
   }
 
   return {
@@ -542,7 +545,8 @@ function computeActivityStats(activities) {
     elevation_m_max: maxElevation,
     duration_h_max: maxDuration,
     avg_power_max: maxPower,
-    countries_count: totals.countries.size
+    countries_count: totals.countries.size,
+    avg_cadence: totals.avg_cadence,
   };
 }
 
@@ -1985,6 +1989,7 @@ async function syncStravaActivities(user) {
           manual: act.manual,
           device_name: act.device_name || details.device_name || null,
           calories: act.kilojoules || null,
+          country: details.location_country || null,
         });
 
         if (actError) {
