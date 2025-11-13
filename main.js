@@ -646,7 +646,7 @@ async function evaluateCondition(cond, stats, userId, activities = []) {
     }
     case 'profile': {
       const { data: profile } = await supabaseClient
-        .from('profiles')
+        .from('users')
         .select('name, ftp, weight')
         .eq('id', userId)
         .maybeSingle();
@@ -661,20 +661,27 @@ async function evaluateCondition(cond, stats, userId, activities = []) {
       break;
     }
     case 'segment_pr': {
-      // Avoir refait un segment ET amélioré son PR (nécessite segments.elapsed_time stocké)
-      const { data: segEfforts } = await supabaseClient
-        .from('segments')
-        .select('segment_id, elapsed_time')
-        .in('activity_id',
-          (await supabaseClient.from('activities')
-            .select('id_strava')
-            .eq('user_id', userId)
-          ).data?.map(a => a.id_strava) || []
-        );
+      const { data: acts } = await supabaseClient
+        .from('activities')
+        .select('id_strava')
+        .eq('user_id', userId);
 
-      const best = new Map(); // segment_id -> best time seen so far
+      const actIds = (acts || []).map(a => a.id_strava);
+      let allEfforts = [];
+
+      // ⚙️ Diviser en paquets de 50 pour éviter les URLs trop longues
+      for (let i = 0; i < actIds.length; i += 50) {
+        const slice = actIds.slice(i, i + 50);
+        const { data: segs } = await supabaseClient
+          .from('segments')
+          .select('segment_id, elapsed_time')
+          .in('activity_id', slice);
+        if (segs) allEfforts = allEfforts.concat(segs);
+      }
+
+      const best = new Map();
       let improved = 0;
-      for (const s of (segEfforts || [])) {
+      for (const s of allEfforts) {
         if (!best.has(s.segment_id)) best.set(s.segment_id, s.elapsed_time);
         else if (s.elapsed_time < best.get(s.segment_id)) {
           improved++;
