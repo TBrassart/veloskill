@@ -2314,7 +2314,8 @@ async function autoSyncIfNeeded(user) {
     calculateXpFromActivities,
     getOrComputeUserXp,
     syncStravaActivities,
-    backfillSegments
+    backfillSegments,
+    updateUserMasteries
   };
 })();
 
