@@ -1,0 +1,15 @@
+name: Strava Auto Sync
+
+on:
+  schedule:
+    - cron: "*/15 * * * *"
+  workflow_dispatch:
+
+jobs:
+  sync:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Appel de la fonction Supabase
+        run: |
+          curl -X POST "https://ztylpjgvxibfgtpkdjpo.supabase.co/functions/v1/sync_strava" \
+               -H "Authorization: Bearer ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}"
