@@ -50,5 +50,36 @@
       <a href="arbre.html" class="btn primary">Explorer ton arbre de compétences</a>
     </section>
   </main>
+
+    <!-- Modale de configuration Strava -->
+  <div id="strava-setup-modal" class="strava-modal" hidden>
+    <div class="strava-modal-content">
+      <div class="strava-modal-header">
+        <div class="strava-logo-circle">
+          <span class="strava-logo-icon">S</span>
+        </div>
+        <div>
+          <h2>Connecte ton compte Strava</h2>
+          <p class="strava-modal-subtitle">
+            Pour importer automatiquement tes sorties et débloquer toutes les fonctionnalités.
+          </p>
+        </div>
+      </div>
+
+      <p class="strava-modal-text">
+        Va dans ton <strong>Profil</strong> puis clique sur
+        <strong>« Connecter Strava »</strong> pour lier ton compte.
+      </p>
+
+      <div class="strava-modal-actions">
+        <button id="strava-go-profile" class="strava-btn">
+          Aller au profil
+        </button>
+        <button id="strava-close" class="strava-btn-secondary">
+          Plus tard
+        </button>
+      </div>
+    </div>
+  </div>
 </body>
 </html>

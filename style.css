@@ -1547,3 +1547,126 @@ header {
 .skill-popup .popup-close:hover {
   color: #fff;
 }
+
+/* === Modale Strava (première connexion) === */
+
+.strava-modal {
+  position: fixed;
+  inset: 0;
+  background: rgba(0,0,0,0.7);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 1100; /* au-dessus des toasts (1000) */
+}
+
+.strava-modal[hidden] {
+  display: none;
+}
+
+.strava-modal-content {
+  background: #111111;
+  border-radius: 16px;
+  padding: 1.8rem 1.6rem;
+  width: 90%;
+  max-width: 420px;
+  box-shadow: 0 14px 40px rgba(0,0,0,0.8);
+  border: 1px solid rgba(252,76,2,0.4); /* halo Strava */
+  animation: strava-pop-in 0.25s ease-out;
+}
+
+@keyframes strava-pop-in {
+  from {
+    transform: scale(0.9) translateY(10px);
+    opacity: 0;
+  }
+  to {
+    transform: scale(1) translateY(0);
+    opacity: 1;
+  }
+}
+
+.strava-modal-header {
+  display: flex;
+  align-items: center;
+  gap: 0.9rem;
+  margin-bottom: 0.75rem;
+}
+
+.strava-logo-circle {
+  width: 40px;
+  height: 40px;
+  border-radius: 999px;
+  background: #FC4C02; /* Strava */
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  box-shadow: 0 0 16px rgba(252,76,2,0.6);
+}
+
+.strava-logo-icon {
+  font-weight: 800;
+  color: #fff;
+  font-size: 1.2rem;
+  letter-spacing: 1px;
+}
+
+.strava-modal-header h2 {
+  margin: 0;
+  font-size: 1.25rem;
+}
+
+.strava-modal-subtitle {
+  margin: 0.2rem 0 0;
+  font-size: 0.85rem;
+  color: #bbbbbb;
+}
+
+.strava-modal-text {
+  font-size: 0.95rem;
+  color: #dddddd;
+  line-height: 1.5;
+  margin-top: 0.6rem;
+}
+
+.strava-modal-actions {
+  margin-top: 1.4rem;
+  display: flex;
+  gap: 0.75rem;
+}
+
+.strava-btn {
+  flex: 1;
+  background: #FC4C02; /* couleur officielle Strava */
+  color: #fff;
+  border: none;
+  border-radius: 999px;
+  padding: 0.6rem 1rem;
+  font-size: 0.95rem;
+  font-weight: 600;
+  cursor: pointer;
+  transition: background 0.2s ease, transform 0.1s ease;
+}
+
+.strava-btn:hover {
+  background: #e34502;
+  transform: translateY(-1px);
+}
+
+.strava-btn-secondary {
+  flex: 1;
+  background: #1e1e1e;
+  color: #dddddd;
+  border-radius: 999px;
+  padding: 0.6rem 1rem;
+  border: 1px solid #333;
+  font-size: 0.9rem;
+  cursor: pointer;
+  transition: background 0.2s ease, border-color 0.2s ease, transform 0.1s ease;
+}
+
+.strava-btn-secondary:hover {
+  background: #252525;
+  border-color: #444;
+  transform: translateY(-1px);
+}

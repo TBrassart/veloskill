@@ -203,6 +203,46 @@ const Veloskill = (() => {
     // 🔄 Synchronisation Strava automatique à l'ouverture
     await autoSyncIfNeeded(user);
 
+    // 🎯 Modale "Connecter Strava" à la première visite si Strava non lié
+    try {
+      const { data: tokens, error: tokensError } = await supabaseClient
+        .from('strava_tokens')
+        .select('user_id')
+        .eq('user_id', user.id)
+        .maybeSingle();
+
+      const hasStrava = !!tokens;
+      const alreadySeen = localStorage.getItem('seen_strava_setup_modal') === '1';
+
+      if (!hasStrava && !alreadySeen) {
+        const modal = document.getElementById('strava-setup-modal');
+        const goBtn = document.getElementById('strava-go-profile');
+        const closeBtn = document.getElementById('strava-close');
+
+        if (modal) {
+          modal.hidden = false;
+
+          const markSeenAndClose = () => {
+            localStorage.setItem('seen_strava_setup_modal', '1');
+            modal.hidden = true;
+          };
+
+          if (goBtn) {
+            goBtn.addEventListener('click', () => {
+              markSeenAndClose();
+              window.location.href = 'profile.html';
+            });
+          }
+
+          if (closeBtn) {
+            closeBtn.addEventListener('click', markSeenAndClose);
+          }
+        }
+      }
+    } catch (e) {
+      console.warn('Erreur affichage modale Strava:', e);
+    }
+
     const xp = await getOrComputeUserXp(user.id);
     renderDashboardXp(xp);
 
