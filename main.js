@@ -233,7 +233,7 @@ const Veloskill = (() => {
           await updateBossProgress(user.id);
 
           // 🔄 Mise à jour automatique des maîtrises
-          await Veloskill.updateUserMasteries(user.id);
+          await updateUserMasteries(user.id);
 
           const oldXp = await getOrComputeUserXp(user.id);
           const oldLevel = computeLevelFromXp(oldXp.endurance);
@@ -285,7 +285,7 @@ async function initMasteries() {
   if (!user) return (window.location.href = 'index.html');
 
   // Met à jour les niveaux automatiquement avant affichage
-  await Veloskill.updateUserMasteries(user.id);
+  await updateUserMasteries(user.id);
 
   const [masteries, userLevels] = await Promise.all([
     fetchMasteries(),
@@ -506,7 +506,6 @@ function computeActivityStats(activities) {
     duration_h: 0,
     rides: activities.length,
     avg_power: 0,
-    avg_cadence: 0,
     countries: new Set()
   };
 
@@ -518,7 +517,7 @@ function computeActivityStats(activities) {
   for (const a of activities) {
     const dist = Number(a.distance_km || 0);
     const elev = Number(a.elevation_m || 0);
-    const dur = Number(a.moving_time_s || 0) / 3600; // secondes → heures
+    const dur = Number(a.duration_h || 0) / 3600; // secondes → heures
     const pow = Number(a.avg_watts || 0);
 
     totals.distance_km += dist;
@@ -533,32 +532,9 @@ function computeActivityStats(activities) {
     if (elev > maxElevation) maxElevation = elev;
     if (dur > maxDuration) maxDuration = dur;
     if (pow > maxPower) maxPower = pow;
+
     if (a.country) totals.countries.add(a.country);
   }
-
-    // Moyennes globales
-  if (activities.length) {
-    const totalPower = activities.reduce((s, a) => s + (a.avg_watts || a.avg_power || 0), 0);
-    totals.avg_power = totalPower / activities.length;
-
-    const totalCad = activities.reduce((s, a) => s + (a.avg_cadence || 0), 0);
-    totals.avg_cadence = totalCad / activities.length;
-  }
-
-  // 7 derniers jours
-  const now = new Date();
-  const weekAgo = new Date(now.getTime() - 7 * 24 * 3600 * 1000);
-  totals.weekly_duration_h = activities
-    .filter(a => new Date(a.start_date || a.start_date_local) >= weekAgo)
-    .reduce((s, a) => s + (Number(a.moving_time_s || 0) / 3600), 0);
-
-  // Home trainer
-  const htHours = activities
-    .filter(a => a.trainer === true)
-    .map(a => Number(a.moving_time_s || 0) / 3600);
-
-  totals.trainer_duration_h = htHours.reduce((s, x) => s + x, 0);
-  totals.trainer_duration_h_max = htHours.length ? Math.max(...htHours) : 0;
 
   return {
     ...totals,
@@ -566,8 +542,7 @@ function computeActivityStats(activities) {
     elevation_m_max: maxElevation,
     duration_h_max: maxDuration,
     avg_power_max: maxPower,
-    countries_count: totals.countries.size,
-    avg_cadence: totals.avg_cadence,
+    countries_count: totals.countries.size
   };
 }
 
@@ -583,7 +558,7 @@ function computeActiveWeeks(activities) {
 }
 
 // Évalue une condition (total, single_ride, geo, etc.)
-async function evaluateCondition(cond, stats, userId, activities = []) {
+async function evaluateCondition(cond, stats, userId) {
   const c = typeof cond === 'string' ? JSON.parse(cond) : cond;
   if (!c) return 0;
 
@@ -615,110 +590,26 @@ async function evaluateCondition(cond, stats, userId, activities = []) {
       metricValue = stats.trainer_duration_h_max || 0;
       break;
     case 'segment': {
-      const { data: segData } = await supabaseClient
-        .from('segments')
-        .select('segment_id')
-        .eq('user_id', userId);
+      // ✅ Si les IDs de segments sont déjà passés dans les stats, on les utilise
+      const userSegmentIds =
+        (stats.segmentIds && Array.isArray(stats.segmentIds))
+          ? stats.segmentIds
+          : (
+              (await supabaseClient
+                .from('segments')
+                .select('segment_id')
+                .eq('user_id', userId)
+              ).data || []
+            ).map(s => s.segment_id);
 
-      const userSegmentIds = (segData || []).map(s => s.segment_id);
-      const requiredSegments = c.thresholds || [];
-      const hasMatch = requiredSegments.some(id => userSegmentIds.includes(id));
+      const requiredSegments = Array.isArray(c.thresholds) ? c.thresholds : [];
+
+      // ✅ Validation si au moins un segment correspond
+      const hasMatch = requiredSegments.some(segId => userSegmentIds.includes(segId));
+
       metricValue = hasMatch ? 1 : 0;
       break;
     }
-    case 'streak_days': {
-      // 🔹 Nombre maximum de jours consécutifs avec activité
-      const dates = [...new Set(activities.map(a => a.start_date.split('T')[0]))].sort();
-      let streak = 1, maxStreak = 1;
-      for (let i = 1; i < dates.length; i++) {
-        const diff = (new Date(dates[i]) - new Date(dates[i - 1])) / (1000 * 60 * 60 * 24);
-        if (diff <= 1) streak++;
-        else streak = 1;
-        if (streak > maxStreak) maxStreak = streak;
-      }
-      metricValue = maxStreak;
-      break;
-    }
-    case 'rolling_week': {
-      // Heures cumulées sur 7 jours glissants
-      metricValue = stats.weekly_duration_h || 0;
-      break;
-    }
-    case 'profile': {
-      const { data: profile } = await supabaseClient
-        .from('users')
-        .select('name, ftp, weight')
-        .eq('id', userId)
-        .maybeSingle();
-
-      const { data: strava } = await supabaseClient
-        .from('strava_tokens')
-        .select('id')
-        .eq('user_id', userId)
-        .maybeSingle();
-
-      metricValue = (profile?.name && profile?.ftp && profile?.weight && strava) ? 1 : 0;
-      break;
-    }
-    case 'segment_pr': {
-      // 🔹 Récupère toutes les activités Strava de l'utilisateur
-      const { data: acts, error: actErr } = await supabaseClient
-        .from('activities')
-        .select('id_strava')
-        .eq('user_id', userId);
-
-      if (actErr || !acts?.length) {
-        metricValue = 0;
-        break;
-      }
-
-      const actIds = acts.map(a => a.id_strava);
-      let allEfforts = [];
-
-      // 🔹 Découpage en paquets de 50 pour éviter les URLs trop longues
-      for (let i = 0; i < actIds.length; i += 50) {
-        const slice = actIds.slice(i, i + 50);
-
-        const { data: segs, error: segErr } = await supabaseClient
-          .from('segments')
-          .select('segment_id, elapsed_time')
-          .in('activity_id', slice);
-
-        if (segErr) {
-          console.error("Erreur segments (slice)", slice, segErr);
-          continue;
-        }
-
-        if (segs) allEfforts = allEfforts.concat(segs);
-      }
-
-      if (!allEfforts.length) {
-        metricValue = 0;
-        break;
-      }
-
-      // 🔹 Détection de PR amélioré
-      const best = new Map();
-      let improved = 0;
-
-      for (const s of allEfforts) {
-        if (!best.has(s.segment_id)) {
-          best.set(s.segment_id, s.elapsed_time);
-        } else if (s.elapsed_time < best.get(s.segment_id)) {
-          improved++;
-          best.set(s.segment_id, s.elapsed_time);
-        }
-      }
-
-      metricValue = improved > 0 ? 1 : 0;
-      break;
-    }
-    case 'trainer_total': {
-      // Heures totales en home trainer
-      metricValue = stats.trainer_duration_h || 0;
-      break;
-    }
-
     default:
       return 0;
   }
@@ -748,7 +639,7 @@ async function updateUserMasteries(userId) {
 
     for (const mastery of masteries) {
       const cond = mastery.condition;
-      const level = await evaluateCondition(cond, stats, userId, activities);
+      const level = await evaluateCondition(cond, stats);
 
       if (level > 0) {
         await supabaseClient.from('user_masteries').upsert({
@@ -756,7 +647,7 @@ async function updateUserMasteries(userId) {
           mastery_id: mastery.id,
           level,
           unlocked_at: new Date().toISOString()
-        }, { onConflict: 'user_id,mastery_id' });
+        });
       }
     }
 
@@ -2031,7 +1922,6 @@ async function syncStravaActivities(user) {
           manual: act.manual,
           device_name: act.device_name || details.device_name || null,
           calories: act.kilojoules || null,
-          country: details.location_country || null,
         });
 
         if (actError) {
@@ -2048,7 +1938,6 @@ async function syncStravaActivities(user) {
           user_id: user.id,
           activity_id: act.id,
           segment_id: seg.segment.id,
-          elapsed_time: seg.elapsed_time,
           name: seg.segment.name,
           distance_m: seg.segment.distance,
           average_grade: seg.segment.average_grade,
@@ -2210,7 +2099,6 @@ async function backfillSegments(user) {
         segment_id: seg.segment.id,
         name: seg.segment.name,
         distance_m: seg.segment.distance,
-        elapsed_time: seg.elapsed_time,
         average_grade: seg.segment.average_grade,
         start_lat: seg.segment.start_latlng ? seg.segment.start_latlng[0] : null,
         start_lng: seg.segment.start_latlng ? seg.segment.start_latlng[1] : null,
@@ -2344,8 +2232,7 @@ async function autoSyncIfNeeded(user) {
     calculateXpFromActivities,
     getOrComputeUserXp,
     syncStravaActivities,
-    backfillSegments,
-    updateUserMasteries
+    backfillSegments
   };
 })();
 
