@@ -1841,7 +1841,6 @@ async function getStravaToken() {
 }
 
 // Fonction principale : synchroniser les activités Strava (historique + nouvelles)
-// Fonction principale : synchroniser les activités Strava (historique + nouvelles)
 async function syncStravaActivities(user) {
   const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
   const STRAVA_API = "https://www.strava.com/api/v3";
