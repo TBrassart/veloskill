@@ -674,10 +674,10 @@ async function updateUserMasteries(userId) {
     let endurance = 0, explosivity = 0, mental = 0, strategy = 0;
 
     for (const act of activities) {
-      const dist = Number(act.distance) || 0;   // km
-      const elev = Number(act.elevation) || 0;  // m
-      const dur = Number(act.duration) || 0;    // s
-      const power = Number(act.avg_power) || 0; // W
+      const dist = Number(act.distance_km) || 0;   // km
+      const elev = Number(act.elevation_m) || 0;  // m
+      const dur = Number(act.moving_time_s) || 0;    // s
+      const power = Number(act.avg_watts) || 0; // W
       const date = new Date(act.start_date || act.start_date_local);
 
       // Recalculer la vitesse moyenne en km/h si possible
