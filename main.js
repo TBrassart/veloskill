@@ -639,7 +639,7 @@ async function updateUserMasteries(userId) {
 
     for (const mastery of masteries) {
       const cond = mastery.condition;
-      const level = await evaluateCondition(cond, stats);
+      const level = await evaluateCondition(cond, stats, userId);
 
       if (level > 0) {
         await supabaseClient.from('user_masteries').upsert({
