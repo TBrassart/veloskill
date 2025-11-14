@@ -1798,11 +1798,12 @@ async function getStravaToken() {
 }
 
 // Fonction principale : synchroniser les activités Strava (historique + nouvelles)
+// Fonction principale : synchroniser les activités Strava (historique + nouvelles)
 async function syncStravaActivities(user) {
   const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
   const STRAVA_API = "https://www.strava.com/api/v3";
 
-  // ✅ 1️⃣ Utilise le helper pour récupérer ou rafraîchir le token
+  // 1️⃣ Récupération / refresh du token
   let token = await getValidStravaAccessToken(user);
   if (!token) {
     console.warn("🔎 Token non trouvé dans localStorage, lecture depuis Supabase...");
@@ -1825,19 +1826,23 @@ async function syncStravaActivities(user) {
   }
 
   // 2️⃣ Déterminer le mode : première synchro ou incrémentale
-  const { data: syncState } = await supabaseClient
+  const { data: syncState, error: syncErr } = await supabaseClient
     .from("strava_tokens")
     .select("initial_sync_done, last_full_sync")
     .eq("user_id", user.id)
     .maybeSingle();
 
+  if (syncErr) {
+    console.error("Erreur lecture strava_tokens:", syncErr);
+  }
+
   let sinceParam = "";
   let isFirstSync = false;
 
-  if (!syncState?.initial_sync_done) {
+  if (!syncState || !syncState.initial_sync_done) {
     console.log("🚀 Première synchronisation : import complet de l’historique Strava");
     isFirstSync = true;
-  } else if (syncState?.last_full_sync) {
+  } else if (syncState.last_full_sync) {
     const lastSync = Math.floor(new Date(syncState.last_full_sync).getTime() / 1000);
     sinceParam = `&after=${lastSync}`;
     console.log(`⏱️ Import des nouvelles activités depuis ${syncState.last_full_sync}`);
@@ -1851,13 +1856,17 @@ async function syncStravaActivities(user) {
       : "Import des dernières sorties en cours..."
   });
 
-  // 3️⃣ Récupère les IDs déjà connus pour éviter les doublons
-  const { data: existing } = await supabaseClient
+  // 3️⃣ Récupère les IDs déjà connus pour éviter les doublons d’activités
+  const { data: existing, error: existingErr } = await supabaseClient
     .from("activities")
     .select("id_strava")
     .eq("user_id", user.id);
 
-  const existingIds = new Set(existing?.map((a) => a.id_strava) || []);
+  if (existingErr) {
+    console.error("Erreur lecture activities existantes:", existingErr);
+  }
+
+  const existingIds = new Set((existing || []).map((a) => a.id_strava));
 
   // 4️⃣ Boucle sur toutes les pages Strava
   let page = 1;
@@ -1882,28 +1891,48 @@ async function syncStravaActivities(user) {
       continue; // on relance la même page
     }
 
+    if (res.status === 401) {
+      console.error("⛔ Erreur 401 Strava (token invalide ou expiré).");
+      Veloskill.showToast({
+        type: "error",
+        title: "Erreur Strava",
+        message: "Token invalide. Essaie de reconnecter Strava dans ton profil."
+      });
+      break;
+    }
+
     const data = await res.json();
     if (!Array.isArray(data) || data.length === 0) break;
+
     console.log(`📦 Page ${page} : ${data.length} activités récupérées.`);
 
     for (const act of data) {
+      // on ne traite que les nouvelles activités
       const isNew = !existingIds.has(act.id);
-      if (isNew) {
-        existingIds.add(act.id);
-      }
+      if (!isNew) continue;
+      existingIds.add(act.id);
 
-      // Détails activité
-      const detailsRes = await fetch(
-        `${STRAVA_API}/activities/${act.id}?include_all_efforts=true`,
-        { headers: { Authorization: `Bearer ${token}` } }
-      );
-      const details = await detailsRes.json();
+      try {
+        // Détails activité (avec les segments)
+        const detailsRes = await fetch(
+          `${STRAVA_API}/activities/${act.id}?include_all_efforts=true`,
+          { headers: { Authorization: `Bearer ${token}` } }
+        );
+        const details = await detailsRes.json();
 
-      // Streams GPS (tu peux garder ton bloc actuel)
-      // ...
+        // 5️⃣ Streams GPS
+        let streams = {};
+        try {
+          const streamRes = await fetch(
+            `${STRAVA_API}/activities/${act.id}/streams?keys=latlng,altitude,watts,heartrate,cadence,distance,time&key_by_type=true`,
+            { headers: { Authorization: `Bearer ${token}` } }
+          );
+          if (streamRes.ok) streams = await streamRes.json();
+        } catch (err) {
+          console.warn(`⚠️ Erreur récupération streams ${act.id}:`, err);
+        }
 
-      // 🔹 Upsert activité uniquement si nouvelle (ou si tu veux, tu peux laisser l'upsert même pour existantes)
-      if (isNew) {
+        // 6️⃣ Insertion / upsert de l’activité principale
         const { error: actError } = await supabaseClient.from("activities").upsert({
           id_strava: act.id,
           user_id: user.id,
@@ -1921,62 +1950,122 @@ async function syncStravaActivities(user) {
           trainer: act.trainer,
           manual: act.manual,
           device_name: act.device_name || details.device_name || null,
-          calories: act.kilojoules || null,
+          calories: act.kilojoules || null
         });
 
         if (actError) {
           console.error("❌ Erreur insertion activité:", actError);
           continue;
         }
-      }
 
-      // 🔹 Segments insérés pour TOUTES les activités (nouvelles + anciennes)
-      const { segment_efforts } = details;
+        // 7️⃣ Insertion des streams (échantillonnage léger)
+        if (streams.latlng?.data?.length) {
+          const points = streams.latlng.data.map((pt, i) => ({
+            activity_id: act.id,
+            lat: pt[0],
+            lng: pt[1],
+            altitude: streams.altitude?.data?.[i] ?? null,
+            watts: streams.watts?.data?.[i] ?? null,
+            hr: streams.heartrate?.data?.[i] ?? null,
+            cadence: streams.cadence?.data?.[i] ?? null,
+            distance_m: streams.distance?.data?.[i] ?? null,
+            time_s: streams.time?.data?.[i] ?? null
+          }));
 
-      if (Array.isArray(segment_efforts) && segment_efforts.length > 0) {
-        const segData = segment_efforts.map(seg => ({
-          user_id: user.id,
-          activity_id: act.id,
-          segment_id: seg.segment.id,
-          name: seg.segment.name,
-          distance_m: seg.segment.distance,
-          average_grade: seg.segment.average_grade,
-          start_lat: seg.segment.start_latlng ? seg.segment.start_latlng[0] : null,
-          start_lng: seg.segment.start_latlng ? seg.segment.start_latlng[1] : null,
-          end_lat: seg.segment.end_latlng ? seg.segment.end_latlng[0] : null,
-          end_lng: seg.segment.end_latlng ? seg.segment.end_latlng[1] : null,
-        }));
-
-        const { error: segError } = await supabaseClient
-          .from("segments")
-          .upsert(segData, { onConflict: 'user_id,activity_id,segment_id' });
-
-        if (segError) {
-          console.error("⚠️ Erreur insertion segments:", segError);
+          // on garde 1 point sur 5 pour alléger
+          const reduced = points.filter((_, i) => i % 5 === 0);
+          const { error: streamError } = await supabaseClient
+            .from("streams")
+            .insert(reduced);
+          if (streamError) {
+            console.error("⚠️ Erreur insertion streams:", streamError);
+          }
         }
-      }
 
-      // (streams idem, tu peux aussi les insérer même si l’activité existe déjà)
+        // 8️⃣ Insertion / upsert des segments (avec user_id + déduplication)
+        const { segment_efforts } = details;
+        if (Array.isArray(segment_efforts) && segment_efforts.length > 0) {
+          // On garde le meilleur effort (elapsed_time le plus bas) par segment_id
+          const bestBySegment = new Map();
+
+          for (const effort of segment_efforts) {
+            const seg = effort.segment;
+            if (!seg) continue;
+            const key = String(seg.id);
+            const elapsed = effort.elapsed_time || null;
+
+            const current = bestBySegment.get(key);
+            if (!current || (elapsed && elapsed < current.elapsed_time)) {
+              bestBySegment.set(key, {
+                user_id: user.id,
+                activity_id: act.id,
+                segment_id: seg.id,
+                name: seg.name,
+                distance_m: seg.distance,
+                average_grade: seg.average_grade,
+                start_lat: seg.start_latlng ? seg.start_latlng[0] : null,
+                start_lng: seg.start_latlng ? seg.start_latlng[1] : null,
+                end_lat: seg.end_latlng ? seg.end_latlng[0] : null,
+                end_lng: seg.end_latlng ? seg.end_latlng[1] : null,
+                elapsed_time: elapsed
+              });
+            }
+          }
+
+          const segData = Array.from(bestBySegment.values());
+          if (segData.length > 0) {
+            const { error: segError } = await supabaseClient
+              .from("segments")
+              .upsert(segData, {
+                onConflict: "user_id,activity_id,segment_id"
+              });
+
+            if (segError) {
+              console.error("⚠️ Erreur insertion segments:", segError);
+            }
+          }
+        }
+
+        totalImported++;
+        if (totalImported % 10 === 0) {
+          console.log(`✅ ${totalImported} nouvelles activités importées jusque-là...`);
+        }
+
+        // petite pause pour limiter les appels Strava
+        await sleep(350);
+      } catch (err) {
+        console.error(`🚨 Erreur sur activité ${act.id}:`, err);
+      }
     }
 
-    if (data.length < 50) stop = true; // dernière page
+    if (data.length < 50) {
+      stop = true; // dernière page
+    }
     page++;
   }
 
-  // 5️⃣ Mise à jour de l’état de synchro
-  await supabaseClient
+  // 9️⃣ Mise à jour de l’état de synchro
+  const nowIso = new Date().toISOString();
+  const { error: updateErr } = await supabaseClient
     .from("strava_tokens")
     .update({
       initial_sync_done: true,
-      last_full_sync: new Date().toISOString(),
+      last_full_sync: nowIso
     })
     .eq("user_id", user.id);
+
+  if (updateErr) {
+    console.error("Erreur mise à jour strava_tokens:", updateErr);
+  }
 
   console.log(`🎉 Import Strava terminé : ${totalImported} nouvelles activités.`);
   Veloskill.showToast({
     type: "success",
-    title: "Synchronisation terminée",
-    message: `${totalImported} nouvelles activités importées 🚴‍♂️`
+    title: "Strava synchronisé",
+    message:
+      totalImported > 0
+        ? `${totalImported} nouvelles sorties ont été importées.`
+        : "Tes sorties Strava étaient déjà à jour."
   });
 }
 
@@ -2139,13 +2228,15 @@ async function backfillSegments(user) {
   });
 }
 
-// 🔁 Déclenche la sync si nécessaire (à chaque ouverture du Dashboard)
+// 🔁 Déclenche la sync si nécessaire (à chaque ouverture du Dashboard, profil, etc.)
 async function autoSyncIfNeeded(user) {
+  if (!user) return;
   const userId = user.id;
-  const { data: tokenData, error: tokenError } = await supabaseClient
-    .from('strava_tokens')
-    .select('*')
-    .eq('user_id', userId)
+
+  const { data: tokenRow, error: tokenError } = await supabaseClient
+    .from("strava_tokens")
+    .select("*")
+    .eq("user_id", userId)
     .maybeSingle();
 
   if (tokenError) {
@@ -2153,35 +2244,21 @@ async function autoSyncIfNeeded(user) {
     return;
   }
 
-  const token = tokenData;
-  if (!token) return;
+  if (!tokenRow) {
+    // utilisateur pas connecté à Strava -> rien à faire
+    return;
+  }
 
-  const lastSync = token.last_full_sync ? new Date(token.last_full_sync) : null;
-  const hoursSince = lastSync ? (Date.now() - lastSync.getTime()) / 3600000 : Infinity;
+  const lastSync = tokenRow.last_full_sync ? new Date(tokenRow.last_full_sync) : null;
+  const hoursSince = lastSync ? (Date.now() - lastSync.getTime()) / 3_600_000 : Infinity;
 
-  // Première connexion ou >2h sans sync
-  if (!token.initial_sync_done || hoursSince > 2) {
-    console.log("🔄 Lancement d'une synchronisation Strava automatique...");
-    await Veloskill.syncStravaActivities(user);
-
-    // Met à jour le flag dans strava_tokens
-    await supabaseClient
-      .from('strava_tokens')
-      .update({
-        initial_sync_done: true,
-        last_full_sync: new Date().toISOString()
-      })
-      .eq('user_id', userId);
-
-    Veloskill.showToast({
-      type: 'success',
-      title: 'Strava synchronisé ✅',
-      message: 'Import automatique terminé.'
-    });
-  } else {
-    console.log("⏳ Pas de sync nécessaire (récente)");
+  // Première connexion OU plus de 2h depuis la dernière synchro
+  if (!tokenRow.initial_sync_done || hoursSince > 2) {
+    console.log("🔁 autoSyncIfNeeded → lancement syncStravaActivities");
+    await syncStravaActivities(user);
   }
 }
+
 
   /* --------------------- INIT GLOBAL --------------------- */
   async function init() {
